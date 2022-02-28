@@ -6,15 +6,47 @@
 typedef enum {
     Module,
     Statement,
-    Expression,
-    SymbolReference,
-    Lambda,
-    LiteralValue,
-    Operator 
+    Expression
 } ASTNodeType;
 
+typedef struct ASTNode_s {
+    ASTNodeType type;
+} ASTNode;
+
+typedef void (*ASTNodePrinter)(struct ASTNode_s*);
+typedef void (*ASTNodeCleaner)(struct ASTNode_s*);
+
+#define AN_METHODS_DECL(n) \
+    void AST ## n ## Node_print(struct ASTNode_s*); \
+    void AST ## n ## Node_cleanUp(struct ASTNode_s*)
+
+AN_METHODS_DECL(Module);
+AN_METHODS_DECL(Statement);
+AN_METHODS_DECL(Expression);
+AN_METHODS_DECL(Lambda);
+AN_METHODS_DECL(LiteralValue);
+AN_METHODS_DECL(Operator);
+
+#define AN_METHODS_STRUCT(n) \
+    (ASTNodeMethods){ AST ## n ## Node_print, AST ## n ## Node_cleanUp }
+
+typedef struct ASTNodeMethods_s {
+    ASTNodePrinter print;
+    ASTNodeCleaner cleanUp;
+} ASTNodeMethods;
+
+const ASTNodeMethods ASTNodeMethodsFor[] = {
+    AN_METHODS_STRUCT(Module),
+    AN_METHODS_STRUCT(Statement),
+    AN_METHODS_STRUCT(Expression),
+    AN_METHODS_STRUCT(Lambda),
+    AN_METHODS_STRUCT(LiteralValue),
+    AN_METHODS_STRUCT(Operator)
+};
+
 typedef enum {
-    SymbolDeclaration
+    SymbolDeclaration,
+    Declaration
 } ASTStatementType;
 
 typedef enum {
@@ -28,14 +60,26 @@ typedef struct String_s {
     char* data;
 } String;
 
-typedef struct ASTNode_s {
-    ASTNodeType type;
-} ASTNode;
-
 typedef struct ASTStatementNode_s {
     ASTNodeType type;
     ASTStatementType statementType;
 } ASTStatementNode;
+
+typedef struct ASTSymbol_s {
+    String* text;
+} ASTSymbol;
+
+typedef struct ASTExpressionNode_s {
+    ASTNodeType type;
+    ASTExpressionType expressionType;
+} ASTExpressionNode;
+
+typedef struct ASTDeclarationStatementNode_s {
+    ASTNodeType type;
+    ASTStatementType statementType;
+    ASTSymbol* symbol;
+    ASTExpressionNode* initializer;
+} ASTDeclarationStatementNode;
 
 typedef struct ASTLiteralType_s {
     
@@ -44,17 +88,8 @@ typedef struct ASTLiteralType_s {
 typedef struct ASTModuleNode_s {
     ASTNodeType type;
     uint32_t statementCount;
-    ASTStatementNode* statement;
+    ASTStatementNode** statement;
 } ASTModuleNode;
-
-typedef struct ASTExpressionNode_s {
-    ASTNodeType type;
-    ASTExpressionType expressionType;
-} ASTExpressionNode;
-
-typedef struct ASTSymbol_s {
-    String* text;
-} ASTSymbol;
 
 typedef struct ASTAssignmentExpression_s {
     ASTNodeType type;
@@ -186,7 +221,7 @@ char* ASTSymbol_tryParse(FILE* in_file, ASTSymbol** symbol) {
 
     skip_whitespace(in_file);
 
-    while(1) {
+    for(int i = 0; ; i++) {
 
         if(fread(&c, 1, 1, in_file) != 1) break;
 
@@ -226,9 +261,43 @@ char* ASTSymbol_tryParse(FILE* in_file, ASTSymbol** symbol) {
     return 0;
 }
 
-char* ASTExpressionNode_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
+void ASTNode_cleanUp(ASTNode* node) {
+    ASTNodeMethodsFor[node->type].cleanUp(node);
+}
 
-    //TODO: Here
+typedef char* (*ExpressionNodeParser)(FILE*, ASTExpressionNode**);
+
+#define EN_METHODS_DECL(n) \
+    char* n ## Expression_tryParse(FILE*, ASTExpressionNode**)
+
+EN_METHODS_DECL(Operator);
+EN_METHODS_DECL(Lambda);
+
+typedef enum {
+    Operator,
+    Lambda,
+    ExpressionTypeCount
+} ExpressionType;
+
+#define EN_METHODS_STRUCT(n) \
+    (ExpressionNodeMethods){ n ## Expression_tryParse }
+
+typedef struct ExpressionNodeMethods_s {
+    ExpressionNodeParser tryParse;
+} ExpressionNodeMethods;
+
+const ExpressionNodeMethods ExpressionMethodsFor[] = {
+    EN_METHODS_STRUCT(Operator),
+    EN_METHODS_STRUCT(Lambda)
+};
+
+char* ASTExpressionNode_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
+    
+    for(int i = 0; i < ExpressionTypeCount; i++)
+        if(ExpressionMethodsFor[i].tryParse(in_file, expression_node) == 0)
+            return 0;
+
+    return "Expected an expression, but did not find one";
 }
 
 char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** statement_node) {
@@ -298,32 +367,34 @@ char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** stateme
 
         fsetpos(in_file, &original_position);
         ASTSymbol_cleanUp(lvalue);
-        ASTSymbol_cleanUp(rvalue);
+        ASTNode_cleanUp((ASTNode*)rvalue);
 
         return "No semicolon following logical end of declaration statement";
     }
 
-    ASTDeclarationStatementNode** declaration_statement_node = (ASTDeclarationStatementNode**)statement_node;
+    ASTDeclarationStatementNode** declaration_statement_node =
+        (ASTDeclarationStatementNode**)statement_node;
 
-    if((*declaration_statement_node) = (ASTDeclarationStatementNode*)malloc(sizeof(ASTDeclarationStatementNode))) {
+    if(((*declaration_statement_node) =
+        (ASTDeclarationStatementNode*)malloc(sizeof(ASTDeclarationStatementNode))) == 0) {
     
         fsetpos(in_file, &original_position);
         ASTSymbol_cleanUp(lvalue);
-        ASTSymbol_cleanUp(rvalue);
+        ASTNode_cleanUp((ASTNode*)rvalue);
 
         return "Unable to allocate space for new declaration statement node";
     }
 
-    (*declaration_statement_node)->type = ASTNodeType.Statement;
-    (*declaration_statement_node)->statementType = ASTStatementType.Declaration;
-    (*declaration_statement_node)->lvalueSymbol = lvalue;
-    (*declaration_statement_node)->rvalueExpression = rvalue;
+    (*declaration_statement_node)->type = Statement;
+    (*declaration_statement_node)->statementType = Declaration;
+    (*declaration_statement_node)->symbol = lvalue;
+    (*declaration_statement_node)->initializer = rvalue;
 }
 
 char* ASTStatementNode_tryParse(FILE* in_file, ASTStatementNode** statement_node) {
 
     *statement_node = (ASTStatementNode*)malloc(sizeof(ASTStatementNode));
-    (*statement_node)->type = ASTNodeType.Statement;
+    (*statement_node)->type = Statement;
 
     if(!(*statement_node)) {
         return "Failed to allocate memory for a statement node";
@@ -334,27 +405,31 @@ char* ASTStatementNode_tryParse(FILE* in_file, ASTStatementNode** statement_node
     return "Expected a statement but did not find one";
 }
 
-char* ASTModuleNode_tryParse(FILE* in_file, ASTModuleNode* module_node) {
+char* ASTModuleNode_tryParse(FILE* in_file, ASTModuleNode** module_node) {
 
     int statementCapacity = 0;
     char* inner_error = 0;
     ASTStatementNode* new_statement;
 
-    module_node->type = ASTNodeType.Module;
-    module_node->statementCount = 0;
-    module_node->statement = 0;
+    (*module_node) = (ASTModuleNode*)malloc(sizeof(ASTModuleNode));
 
-    while(not at end of file && ((inner_error = ASTStatementNode_tryParse(in_file, &new_statement)) == 0)) {
+    if((*module_node) == 0) return "Unable to allocate memory for a module node";
+
+    (*module_node)->type = Module;
+    (*module_node)->statementCount = 0;
+    (*module_node)->statement = 0;
+
+    while(/*not at end of file*/ && ((inner_error = ASTStatementNode_tryParse(in_file, &new_statement)) == 0)) {
         
-        if(statementCapacity < (module_node->statementCount + 1)) {
+        if(statementCapacity < ((*module_node)->statementCount + 1)) {
 
             int nextCapacity = (statementCapacity == 0) ? 1 : (statementCapacity * 2);
         
-            module_node->statement = (ASTStatementNode*)realloc(
-                module_node->statement,
-                nextCapacity * sizeof(ASTStatementNode) );
+            (*module_node)->statement = (ASTStatementNode**)realloc(
+                (*module_node)->statement,
+                nextCapacity * sizeof(ASTStatementNode*) );
 
-            if(!module_node->statement) {
+            if(!(*module_node)->statement) {
 
                 inner_error = "Failed to allocate statement memory when constructing module node";
 
@@ -364,7 +439,7 @@ char* ASTModuleNode_tryParse(FILE* in_file, ASTModuleNode* module_node) {
             statementCapacity = nextCapacity;
         }
 
-        module_node->statement[module_node->statementCount++] = new_statement;
+        (*module_node)->statement[(*module_node)->statementCount++] = new_statement;
     }
 
     return inner_error;
@@ -384,29 +459,29 @@ int main(int argc, char* argv[]) {
 
     FILE* in_file = fopen(in_name, "r");
 
-    ASTModuleNode module_ast;
+    ASTModuleNode* module_ast;
 
     char* error_message = ASTModuleNode_tryParse(in_file, &module_ast);
 
     if(error_message) {
         
-        printf("Compilation failed: %s\n", warning_message);
+        printf("Compilation failed: %s\n", error_message);
 
-        ASTModuleNode_cleanUp(module_ast);
+        ASTModuleNode_cleanUp((ASTNode*)module_ast); 
 
         return 1;
     }
 
-    ASTModuleNode_debugPrint(&module_ast);
+    ASTNode_print(module_ast);
 
     //TODO: Actually parse command line args as described
-    FILE* out_file = argv[1];
+    FILE* out_file = fopen(argv[1], "w");
 
-    ASTModuleNode_writeOut(out_file, module_ast);
+    ASTNode_writeOut(out_file, (ASTNode*)module_ast);
 
     fclose(out_file);
 
-    ASTModuleNode_cleanUp(module_ast);
+    ASTNode_cleanUp((ASTNode*)module_ast);
 
     return 0;
 }
