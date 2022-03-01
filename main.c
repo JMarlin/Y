@@ -167,6 +167,8 @@ char* String_append(String* target, String* source) {
         target->capacity = target->capacity == 0
             ? 1
             : (2 * target->capacity);
+
+        reallocate = 1;
     }
 
     if(reallocate) {
@@ -346,16 +348,21 @@ char* OperatorExpression_tryParse(FILE* in_file, ASTExpressionNode** expression_
 }
 
 char* LambdaExpression_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
+    /* TODO: HERE */
     return "LambdaExpression_tryParse: Not implemented";
 }
 
 char* ASTExpressionNode_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
     
+    char *error, *first_error;
+    
     for(int i = 0; i < ExpressionTypeCount; i++)
-        if(ExpressionMethodsFor[i].tryParse(in_file, expression_node) == 0)
+        if((error = ExpressionMethodsFor[i].tryParse(in_file, expression_node)) == 0)
             return 0;
+        else if(i == 0)
+            first_error = error;
 
-    return "Expected an expression, but did not find one";
+    return first_error;
 }
 
 char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** statement_node) {
@@ -460,9 +467,11 @@ char* ASTStatementNode_tryParse(FILE* in_file, ASTStatementNode** statement_node
 
     skip_whitespace(in_file);
 
-    if(ASTDeclarationStatement_tryParse(in_file, statement_node) == 0) return 0;
+    char* first_error;
 
-    return "Expected a statement but did not find one";
+    if((first_error = ASTDeclarationStatement_tryParse(in_file, statement_node)) == 0) return 0;
+
+    return first_error;
 }
 
 char* ASTModuleNode_tryParse(FILE* in_file, ASTModuleNode** module_node) {
