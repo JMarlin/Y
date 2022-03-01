@@ -81,6 +81,14 @@ typedef struct ASTDeclarationStatementNode_s {
     ASTExpressionNode* initializer;
 } ASTDeclarationStatementNode;
 
+typedef struct ASTLambdaExpressionNode_s {
+    ASTNodeType type;
+    ASTExpressionType expressionType;
+    int parameterDeclarationCount;
+    ASTDeclarationStatementNode* parameterDeclarations;
+    ASTExpressionNode* expression;
+} ASTLambdaExpressionNode;
+
 typedef struct ASTLiteralType_s {
     
 } ASTLiteralType;
@@ -127,7 +135,12 @@ void skip_whitespace(FILE* in_file) {
 
         fgetpos(in_file, &last_pos);
 
-        if(fread(&c, 1, 1, in_file) != 1) return;
+        if(fread(&c, 1, 1, in_file) != 1) {
+
+            fsetpos(in_file, &last_pos);
+
+            return;
+        }
 
         if(c > 0x20) {
 
@@ -291,8 +304,8 @@ typedef struct ExpressionNodeMethods_s {
 } ExpressionNodeMethods;
 
 const ExpressionNodeMethods ExpressionMethodsFor[] = {
-    EN_METHODS_STRUCT(Operator),
-    EN_METHODS_STRUCT(Lambda)
+    EN_METHODS_STRUCT(Lambda),
+    EN_METHODS_STRUCT(Operator)
 };
 
 void ASTModuleNode_print(ASTNode* node) {
@@ -347,13 +360,162 @@ char* OperatorExpression_tryParse(FILE* in_file, ASTExpressionNode** expression_
     return "OperatorExpression_tryParse: Not implemented";
 }
 
+void ASTDeclarationStatement_cleanUp(ASTStatementNode* node) {
+    printf("ASTDeclarationStatement_cleanUp: Not implemented\n");
+}
+
+char* ASTExpressionNode_tryParse(FILE* in_file, ASTExpressionNode** expression_node); 
+char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** statement_node); 
+
 char* LambdaExpression_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
-    /* TODO: HERE */
-    return "LambdaExpression_tryParse: Not implemented";
+
+    fpos_t original_position;
+
+    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+
+    skip_whitespace(in_file);
+
+    char c;
+
+    if(fread(&c, 1, 1, in_file) != 1) return "Unexpected EOF starting lambda expression";
+
+    if(c != '(') return "Expected '(' at start of lambda declaration";
+
+    int paramDeclarationsCapacity = 0;
+    int paramDeclarationsCount = 0;
+
+    ASTDeclarationStatementNode* paramDeclarations = 0;
+
+    while(1) {
+    
+        ASTDeclarationStatementNode* declaration;
+
+        char* error = ASTDeclarationStatement_tryParse(
+            in_file,
+            (ASTStatementNode**)&declaration );
+
+        if(error) {
+
+            if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+            fsetpos(in_file, &original_position);
+
+            return error;
+        }
+
+        if(paramDeclarationsCapacity == paramDeclarationsCount) {
+
+            int new_size = paramDeclarationsCapacity == 0
+                ? 1
+                : (2 * paramDeclarationsCapacity);
+    
+            ASTDeclarationStatementNode* newDeclarationsPtr =
+                (ASTDeclarationStatementNode*)malloc(
+                    sizeof(ASTDeclarationStatementNode) * new_size );
+
+            if(newDeclarationsPtr != 0) {
+
+                paramDeclarations = newDeclarationsPtr;
+
+                continue;
+            }
+
+            if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+            fsetpos(in_file, &original_position);
+
+            return "Failed to allocate memory for lambda parameter declarations";
+        }
+
+        paramDeclarations[paramDeclarationsCount++] = *declaration;
+
+        skip_whitespace(in_file);
+
+        if(fread(&c, 1, 1, in_file) != 1) {
+
+            if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+            fsetpos(in_file, &original_position);
+
+            return "Unexpected EOF in lambda expression parameter list";
+        }
+
+        if(c != ',') break;
+    }
+
+    if(c != ')') {
+
+        if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+        fsetpos(in_file, &original_position);
+
+        return "Expected a closing parenthesis at the end of lambda argument list";
+    }
+
+    skip_whitespace(in_file);
+
+    char arrow_buf[2];
+
+    if(fread(arrow_buf, 1, 2, in_file) != 2) {
+
+        if(paramDeclarationsCount > 0) free(paramDeclarations);
+        
+        fsetpos(in_file, &original_position);
+
+        return "Unexpected EOF after lambda expression argument list";
+    }
+
+    if(arrow_buf[0] != '=' || arrow_buf[1] != '>')  {
+
+        if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+        fsetpos(in_file, &original_position);
+
+        return "Expected '=>' following lambda argument list";
+    }
+
+    skip_whitespace(in_file);
+
+    ASTExpressionNode* expression;
+
+    char* expression_error = ASTExpressionNode_tryParse(in_file, &expression);
+
+    if(expression_error != 0)  {
+
+        if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+        fsetpos(in_file, &original_position);
+
+        return expression_error;
+    }
+
+    ASTLambdaExpressionNode* lambda =
+        (ASTLambdaExpressionNode*)malloc(sizeof(ASTLambdaExpressionNode));
+
+    if(!lambda)  {
+
+        if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+        ASTExpressionNode_cleanUp((ASTNode*)expression);
+
+        fsetpos(in_file, &original_position);
+
+        return expression_error;
+    }
+
+    lambda->type = Expression;
+    lambda->expressionType = Lambda;
+    lambda->parameterDeclarationCount = paramDeclarationsCount;
+    lambda->parameterDeclarations = paramDeclarations;
+    lambda->expression = expression;
+
+    *expression_node = (ASTExpressionNode*)lambda;
+
+    return 0;
 }
 
 char* ASTExpressionNode_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
-    
+
     char *error, *first_error;
     
     for(int i = 0; i < ExpressionTypeCount; i++)
@@ -376,7 +538,7 @@ char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** stateme
     char kw_buf[4];
     const char* var_keyword = "var";
 
-    if(fread(kw_buf, 1, 4, in_file) != 4) return "Unexpected EOF";
+    if(fread(kw_buf, 1, 4, in_file) != 4) return "Unexpected EOF in variable declaration";
 
     for(int i = 0; i < 3; i++) if(kw_buf[i] != var_keyword[i]) {
     
@@ -404,24 +566,19 @@ char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** stateme
 
     char eq;
 
-    if(fread(&eq, 1, 1, in_file) != 1 || eq != '=') {
+    ASTExpressionNode* rvalue = 0;
 
-        fsetpos(in_file, &original_position);
-        ASTSymbol_cleanUp(lvalue);
+    if(fread(&eq, 1, 1, in_file) == 1 && eq == '=') {
 
-        return "Unexpected EOF";
-    }
+        error = ASTExpressionNode_tryParse(in_file, &rvalue);
 
-    ASTExpressionNode* rvalue;
+        if(error != 0) {
 
-    error = ASTExpressionNode_tryParse(in_file, &rvalue);
+            fsetpos(in_file, &original_position);
+            ASTSymbol_cleanUp(lvalue);
 
-    if(error != 0) {
-
-        fsetpos(in_file, &original_position);
-        ASTSymbol_cleanUp(lvalue);
-
-        return error;
+            return error;
+        }
     }
 
     skip_whitespace(in_file);
@@ -432,7 +589,8 @@ char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** stateme
 
         fsetpos(in_file, &original_position);
         ASTSymbol_cleanUp(lvalue);
-        ASTNode_cleanUp((ASTNode*)rvalue);
+
+        if(rvalue != 0) ASTNode_cleanUp((ASTNode*)rvalue);
 
         return "No semicolon following logical end of declaration statement";
     }
@@ -445,7 +603,7 @@ char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** stateme
     
         fsetpos(in_file, &original_position);
         ASTSymbol_cleanUp(lvalue);
-        ASTNode_cleanUp((ASTNode*)rvalue);
+        if(rvalue != 0) ASTNode_cleanUp((ASTNode*)rvalue);
 
         return "Unable to allocate space for new declaration statement node";
     }
