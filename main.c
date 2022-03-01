@@ -261,9 +261,11 @@ char* ASTSymbol_tryParse(FILE* in_file, ASTSymbol** symbol) {
     return 0;
 }
 
-void ASTNode_cleanUp(ASTNode* node) {
-    ASTNodeMethodsFor[node->type].cleanUp(node);
-}
+void ASTNode_cleanUp(ASTNode* node) { ASTNodeMethodsFor[node->type].cleanUp(node); }
+
+void ASTNode_print(ASTNode* node) { ASTNodeMethodsFor[node->type].print(node); }
+
+void ASTNode_writeOut(FILE* out_file, ASTNode* node) { /* TODO: Generate C from AST */ }
 
 typedef char* (*ExpressionNodeParser)(FILE*, ASTExpressionNode**);
 
@@ -290,6 +292,62 @@ const ExpressionNodeMethods ExpressionMethodsFor[] = {
     EN_METHODS_STRUCT(Operator),
     EN_METHODS_STRUCT(Lambda)
 };
+
+void ASTModuleNode_print(ASTNode* node) {
+    printf("ASTModuleNode_print: Not implemented\n");
+}
+
+void ASTStatementNode_print(ASTNode* node) {
+    printf("ASTStatementNode_print: Not implemented\n");
+}
+
+void ASTExpressionNode_print(ASTNode* node) {
+    printf("ASTExpressionNode_print: Not implemented\n");
+}
+
+void ASTLambdaNode_print(ASTNode* node) {
+    printf("ASTLambdaNode_print: Not implemented\n");
+}
+
+void ASTLiteralValueNode_print(ASTNode* node) {
+    printf("ASTLiteralValueNode_print: Not implemented\n");
+}
+
+void ASTOperatorNode_print(ASTNode* node) {
+    printf("ASTOperatorNode_print: Not implemented\n");
+}
+
+void ASTModuleNode_cleanUp(ASTNode* node) {
+    printf("ASTModuleNode_cleanUp: Not implemented\n");
+}
+
+void ASTStatementNode_cleanUp(ASTNode* node) {
+    printf("ASTStatementNode_cleanUp: Not implemented\n");
+}
+
+void ASTExpressionNode_cleanUp(ASTNode* node) {
+    printf("ASTExpressionNode_cleanUp: Not implemented\n");
+}
+
+void ASTLambdaNode_cleanUp(ASTNode* node) {
+    printf("ASTLambdaNode_cleanUp: Not implemented\n");
+}
+
+void ASTLiteralValueNode_cleanUp(ASTNode* node) {
+    printf("ASTLiteralValueNode_cleanUp: Not implemented\n");
+}
+
+void ASTOperatorNode_cleanUp(ASTNode* node) {
+    printf("ASTOperatorNode_cleanUp: Not implemented\n");
+}
+
+char* OperatorExpression_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
+    return "OperatorExpression_tryParse: Not implemented";
+}
+
+char* LambdaExpression_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
+    return "LambdaExpression_tryParse: Not implemented";
+}
 
 char* ASTExpressionNode_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
     
@@ -400,6 +458,8 @@ char* ASTStatementNode_tryParse(FILE* in_file, ASTStatementNode** statement_node
         return "Failed to allocate memory for a statement node";
     }
 
+    skip_whitespace(in_file);
+
     if(ASTDeclarationStatement_tryParse(in_file, statement_node) == 0) return 0;
 
     return "Expected a statement but did not find one";
@@ -419,7 +479,7 @@ char* ASTModuleNode_tryParse(FILE* in_file, ASTModuleNode** module_node) {
     (*module_node)->statementCount = 0;
     (*module_node)->statement = 0;
 
-    while(/*not at end of file*/ && ((inner_error = ASTStatementNode_tryParse(in_file, &new_statement)) == 0)) {
+    while((!feof(in_file)) && ((inner_error = ASTStatementNode_tryParse(in_file, &new_statement)) == 0)) {
         
         if(statementCapacity < ((*module_node)->statementCount + 1)) {
 
@@ -440,6 +500,8 @@ char* ASTModuleNode_tryParse(FILE* in_file, ASTModuleNode** module_node) {
         }
 
         (*module_node)->statement[(*module_node)->statementCount++] = new_statement;
+
+        skip_whitespace(in_file);
     }
 
     return inner_error;
@@ -447,15 +509,15 @@ char* ASTModuleNode_tryParse(FILE* in_file, ASTModuleNode** module_node) {
 
 int main(int argc, char* argv[]) {
 
-    if(argc < 1) {
+    if(argc < 2) {
 
-        printf("Usage: yc <in_file.y> [-o out_file | -t out_file.c]");
+        printf("Usage: yc <in_file.y> [-o out_file | -t out_file.c]\n");
 
         return 0;
     }
 
     //Compile functions of the form ([args]) => expression; into a C function
-    char* in_name = argv[0];
+    char* in_name = argv[1];
 
     FILE* in_file = fopen(in_name, "r");
 
@@ -472,10 +534,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    ASTNode_print(module_ast);
+    ASTNode_print((ASTNode*)module_ast);
 
     //TODO: Actually parse command line args as described
-    FILE* out_file = fopen(argv[1], "w");
+    FILE* out_file = fopen(argv[2], "w");
 
     ASTNode_writeOut(out_file, (ASTNode*)module_ast);
 
