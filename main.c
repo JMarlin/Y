@@ -6,7 +6,9 @@
 typedef enum {
     Module,
     Statement,
-    Expression
+    Expression,
+    ParameterList,
+    ASTNodeTypeCount
 } ASTNodeType;
 
 typedef struct ASTNode_s {
@@ -26,6 +28,7 @@ AN_METHODS_DECL(Expression);
 AN_METHODS_DECL(Lambda);
 AN_METHODS_DECL(LiteralValue);
 AN_METHODS_DECL(Operator);
+AN_METHODS_DECL(ParameterList);
 
 #define AN_METHODS_STRUCT(n) \
     (ASTNodeMethods){ AST ## n ## Node_print, AST ## n ## Node_cleanUp }
@@ -41,7 +44,8 @@ const ASTNodeMethods ASTNodeMethodsFor[] = {
     AN_METHODS_STRUCT(Expression),
     AN_METHODS_STRUCT(Lambda),
     AN_METHODS_STRUCT(LiteralValue),
-    AN_METHODS_STRUCT(Operator)
+    AN_METHODS_STRUCT(Operator),
+    AN_METHODS_STRUCT(ParameterList)
 };
 
 typedef enum {
@@ -135,12 +139,7 @@ void skip_whitespace(FILE* in_file) {
 
         fgetpos(in_file, &last_pos);
 
-        if(fread(&c, 1, 1, in_file) != 1) {
-
-            fsetpos(in_file, &last_pos);
-
-            return;
-        }
+        if(fread(&c, 1, 1, in_file) != 1) return;
 
         if(c > 0x20) {
 
@@ -216,6 +215,174 @@ void String_cleanUp(String* string) {
 
     free(string);
 }
+
+void ParameterListNode_print(ASTNode* node ) {
+
+    printf("ParameterListNode_print: Not implemented\n");
+}
+
+void ParameterListNode_cleanUp(ASTNode* node) {
+
+    printf("ParameterListNode_cleanUp: Not implemented\n");
+}
+
+char* ASTParameter_tryParse(FILE* in_file, ASTStatementNode** statement_node) {
+
+    fpos_t original_position;
+
+    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+
+    skip_whitespace(in_file);
+
+    //TODO: actually declare a type
+    char kw_buf[4];
+    const char* var_keyword = "var";
+
+    if(fread(kw_buf, 1, 4, in_file) != 4) return "Unexpected EOF in parameter declaration";
+
+    for(int i = 0; i < 3; i++) if(kw_buf[i] != var_keyword[i]) {
+    
+        fsetpos(in_file, &original_position);
+
+        return "Parameter declaration did not begin with 'var' keyword";
+    }
+
+    if(kw_buf[3] > 0x20) {
+
+        fsetpos(in_file, &original_position);
+
+        return "Parameter declaration did not begin with 'var' keyword";
+    }
+    
+    ASTSymbol* symbol;
+
+    skip_whitespace(in_file);
+
+    char* error = ASTSymbol_tryParse(in_file, &symbol);
+
+    if(error != 0) return error;
+
+    ASTParameterNode** parameter_node =
+        (ASTParameterNode**)node;
+
+    if(((*parameter_node) =
+        (ASTParameterNode*)malloc(sizeof(ASTParameterNode))) == 0) {
+    
+        fsetpos(in_file, &original_position);
+        ASTSymbol_cleanUp(symbol);
+
+        return "Unable to allocate space for new parameter declaration node";
+    }
+
+    (*parameter_node)->type = Parameter;
+    (*parameter_node)->symbol = symbol;
+}
+
+char* ASTParameterListNode_tryParse(FILE* in_file, ASTNode** node) {
+
+    fpos_t original_position;
+
+    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+
+    skip_whitespace(in_file);
+
+    char c;
+
+    if(fread(&c, 1, 1, in_file) != 1) return "Unexpected EOF starting argument list";
+
+    if(c != '(') return "Expected '(' at start of argument list";
+
+    int paramDeclarationsCapacity = 0;
+    int paramDeclarationsCount = 0;
+
+    ASTDeclarationStatementNode* paramDeclarations = 0;
+
+    while(1) {
+    
+        ASTParameterNode* parameter;
+
+        char* error = ASTParameter_tryParse(
+            in_file,
+            (ASTNode**)&parameter );
+
+        if(error) {
+
+            if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+            fsetpos(in_file, &original_position);
+
+            return error;
+        }
+
+        if(paramDeclarationsCapacity == paramDeclarationsCount) {
+
+            int new_size = paramDeclarationsCapacity == 0
+                ? 1
+                : (2 * paramDeclarationsCapacity);
+    
+            ASTParameterNode* newParametersPtr =
+                (ASTParameterNode*)malloc(
+                    sizeof(ASTParameterNode) * new_size );
+
+            if(newParametersPtr != 0) {
+
+                paramDeclarations = newParametersPtr;
+
+                continue;
+            }
+
+            if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+            fsetpos(in_file, &original_position);
+
+            return "Failed to allocate memory for parameter list";
+        }
+
+        paramDeclarations[paramDeclarationsCount++] = *parameter;
+
+        skip_whitespace(in_file);
+
+        if(fread(&c, 1, 1, in_file) != 1) {
+
+            if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+            fsetpos(in_file, &original_position);
+
+            return "Unexpected EOF in parameter list";
+        }
+
+        if(c != ',') break;
+    }
+
+    if(c != ')') {
+
+        if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+        fsetpos(in_file, &original_position);
+
+        return "Expected a closing parenthesis at the end of parameter list";
+    }
+
+    ASTParameterListNode* parameterList =
+        (ASTParameterListNode*)malloc(sizeof(ASTParameterListNode));
+
+    if(parameterList == 0) {
+
+        if(paramDeclarationsCount > 0) free(paramDeclarations);
+
+        fsetpos(in_file, &original_position);
+
+        return "Failed to allocate memory for parameter list";
+    }
+
+    parameterList->count = paramDeclarationsCount;
+    parameterList->parameters = paramDeclarations;
+    
+    (*node) = (ASTNode*)parameterList;
+
+    return 0;
+}
+
 
 void ASTSymbol_cleanUp(ASTSymbol* symbol) {
 
@@ -369,88 +536,11 @@ char* ASTDeclarationStatement_tryParse(FILE* in_file, ASTStatementNode** stateme
 
 char* LambdaExpression_tryParse(FILE* in_file, ASTExpressionNode** expression_node) {
 
-    fpos_t original_position;
-
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    skip_whitespace(in_file);
-
-    char c;
-
-    if(fread(&c, 1, 1, in_file) != 1) return "Unexpected EOF starting lambda expression";
-
-    if(c != '(') return "Expected '(' at start of lambda declaration";
-
-    int paramDeclarationsCapacity = 0;
-    int paramDeclarationsCount = 0;
-
-    ASTDeclarationStatementNode* paramDeclarations = 0;
-
-    while(1) {
+    ASTParameterList* parameterList;
     
-        ASTDeclarationStatementNode* declaration;
+    char* pl_error = ASTParameterListNode_tryParse(in_file, (ASTNode*)&parameterList);
 
-        char* error = ASTDeclarationStatement_tryParse(
-            in_file,
-            (ASTStatementNode**)&declaration );
-
-        if(error) {
-
-            if(paramDeclarationsCount > 0) free(paramDeclarations);
-
-            fsetpos(in_file, &original_position);
-
-            return error;
-        }
-
-        if(paramDeclarationsCapacity == paramDeclarationsCount) {
-
-            int new_size = paramDeclarationsCapacity == 0
-                ? 1
-                : (2 * paramDeclarationsCapacity);
-    
-            ASTDeclarationStatementNode* newDeclarationsPtr =
-                (ASTDeclarationStatementNode*)malloc(
-                    sizeof(ASTDeclarationStatementNode) * new_size );
-
-            if(newDeclarationsPtr != 0) {
-
-                paramDeclarations = newDeclarationsPtr;
-
-                continue;
-            }
-
-            if(paramDeclarationsCount > 0) free(paramDeclarations);
-
-            fsetpos(in_file, &original_position);
-
-            return "Failed to allocate memory for lambda parameter declarations";
-        }
-
-        paramDeclarations[paramDeclarationsCount++] = *declaration;
-
-        skip_whitespace(in_file);
-
-        if(fread(&c, 1, 1, in_file) != 1) {
-
-            if(paramDeclarationsCount > 0) free(paramDeclarations);
-
-            fsetpos(in_file, &original_position);
-
-            return "Unexpected EOF in lambda expression parameter list";
-        }
-
-        if(c != ',') break;
-    }
-
-    if(c != ')') {
-
-        if(paramDeclarationsCount > 0) free(paramDeclarations);
-
-        fsetpos(in_file, &original_position);
-
-        return "Expected a closing parenthesis at the end of lambda argument list";
-    }
+    if(pl_error != 0) return pl_error;
 
     skip_whitespace(in_file);
 
