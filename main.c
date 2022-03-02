@@ -7,6 +7,7 @@ typedef enum {
     Module,
     Statement,
     Expression,
+    Parameter,
     ParameterList,
     ASTNodeTypeCount
 } ASTNodeType;
@@ -28,6 +29,7 @@ AN_METHODS_DECL(Expression);
 AN_METHODS_DECL(Lambda);
 AN_METHODS_DECL(LiteralValue);
 AN_METHODS_DECL(Operator);
+AN_METHODS_DECL(Parameter);
 AN_METHODS_DECL(ParameterList);
 
 #define AN_METHODS_STRUCT(n) \
@@ -45,6 +47,7 @@ const ASTNodeMethods ASTNodeMethodsFor[] = {
     AN_METHODS_STRUCT(Lambda),
     AN_METHODS_STRUCT(LiteralValue),
     AN_METHODS_STRUCT(Operator),
+    AN_METHODS_STRUCT(Parameter),
     AN_METHODS_STRUCT(ParameterList)
 };
 
@@ -72,6 +75,17 @@ typedef struct ASTStatementNode_s {
 typedef struct ASTSymbol_s {
     String* text;
 } ASTSymbol;
+
+typedef struct ASTParameterNode_s {
+    ASTNodeType type;
+    ASTSymbol* symbol;
+} ASTParameterNode;
+
+typedef struct ASTParamterListNode_s {
+    ASTNodeType type;
+    int count;
+    ASTParameterNode* parameters;
+} ASTParameterListNode;
 
 typedef struct ASTExpressionNode_s {
     ASTNodeType type;
@@ -226,7 +240,10 @@ void ParameterListNode_cleanUp(ASTNode* node) {
     printf("ParameterListNode_cleanUp: Not implemented\n");
 }
 
-char* ASTParameter_tryParse(FILE* in_file, ASTStatementNode** statement_node) {
+char* ASTSymbol_tryParse(FILE* in_file, ASTSymbol** symbol); 
+void ASTSymbol_cleanUp(ASTSymbol* symbol);
+
+char* ASTParameter_tryParse(FILE* in_file, ASTNode** node) {
 
     fpos_t original_position;
 
@@ -295,7 +312,7 @@ char* ASTParameterListNode_tryParse(FILE* in_file, ASTNode** node) {
     int paramDeclarationsCapacity = 0;
     int paramDeclarationsCount = 0;
 
-    ASTDeclarationStatementNode* paramDeclarations = 0;
+    ASTParameterNode* paramDeclarations = 0;
 
     while(1) {
     
@@ -375,6 +392,7 @@ char* ASTParameterListNode_tryParse(FILE* in_file, ASTNode** node) {
         return "Failed to allocate memory for parameter list";
     }
 
+    parameterList->type = ParameterList;
     parameterList->count = paramDeclarationsCount;
     parameterList->parameters = paramDeclarations;
     
