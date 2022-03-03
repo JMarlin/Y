@@ -5,13 +5,13 @@
 
 typedef enum {
     Module,
-    Statement,
-    Expression,
+    Declaration,
     Parameter,
     ParameterList,
-    Symbol,
+    SymbolExpression,
     Operator,
     Literal,
+    Lambda,
     ASTNodeTypeCount
 } ASTNodeType;
 
@@ -19,42 +19,46 @@ typedef struct ASTNode_s {
     ASTNodeType type;
 } ASTNode;
 
-typedef void (*ASTNodePrinter)(struct ASTNode_s*);
-typedef void (*ASTNodeCleaner)(struct ASTNode_s*);
-
-#define AN_METHODS_DECL(n) \
-    void AST ## n ## Node_print(struct ASTNode_s*); \
-    void AST ## n ## Node_cleanUp(struct ASTNode_s*)
-
-AN_METHODS_DECL(Module);
-AN_METHODS_DECL(Statement);
-AN_METHODS_DECL(Expression);
-AN_METHODS_DECL(Parameter);
-AN_METHODS_DECL(ParameterList);
-AN_METHODS_DECL(Symbol);
-AN_METHODS_DECL(Declaration);
-AN_METHODS_DECL(Operator);
-AN_METHODS_DECL(Literal);
-
-
-#define AN_METHODS_STRUCT(n) \
-    (ASTNodeMethods){ AST ## n ## Node_print, AST ## n ## Node_cleanUp }
+typedef void (*ASTNodePrinter)(ASTNode*, int);
+typedef void (*ASTNodeCleaner)(ASTNode*);
 
 typedef struct ASTNodeMethods_s {
     ASTNodePrinter print;
     ASTNodeCleaner cleanUp;
 } ASTNodeMethods;
 
+/* TODO: Implement all of these
+#define AN_METHODS_DECL(n) \
+    void AST ## n ## Node_print(ASTNode*, int); \
+    void AST ## n ## Node_cleanUp(ASTNode*)
+
+AN_METHODS_DECL(Module);
+AN_METHODS_DECL(Declaration);
+AN_METHODS_DECL(Parameter);
+AN_METHODS_DECL(ParameterList);
+AN_METHODS_DECL(SymbolExpression);
+AN_METHODS_DECL(Declaration);
+AN_METHODS_DECL(Operator);
+AN_METHODS_DECL(Literal);
+AN_METHODS_DECL(Lambda);
+
+
+#define AN_METHODS_STRUCT(n) \
+    (ASTNodeMethods){ AST ## n ## Node_print, AST ## n ## Node_cleanUp }
+
+*/
 const ASTNodeMethods ASTNodeMethodsFor[] = {
-    AN_METHODS_DECL(Module),
-    AN_METHODS_DECL(Statement),
-    AN_METHODS_DECL(Expression),
-    AN_METHODS_DECL(Parameter),
-    AN_METHODS_DECL(ParameterList),
-    AN_METHODS_DECL(Symbol),
-    AN_METHODS_DECL(Declaration),
-    AN_METHODS_DECL(Operator),
-    AN_METHODS_DECL(Literal)
+/*
+    AN_METHODS_STRUCT(Module),
+    AN_METHODS_STRUCT(Declaration),
+    AN_METHODS_STRUCT(Parameter),
+    AN_METHODS_STRUCT(ParameterList),
+    AN_METHODS_STRUCT(SymbolExpression),
+    AN_METHODS_STRUCT(Declaration),
+    AN_METHODS_STRUCT(Operator),
+    AN_METHODS_STRUCT(Literal),
+    AN_METHODS_STRUCT(Lambda)
+*/
 };
 
 typedef struct String_s {
@@ -62,11 +66,6 @@ typedef struct String_s {
     uint32_t length;
     char* data;
 } String;
-
-typedef struct ASTStatementNode_s {
-    ASTNodeType type;
-    ASTStatementType statementType;
-} ASTStatementNode;
 
 typedef struct ASTSymbol_s {
     String* text;
@@ -80,7 +79,7 @@ typedef struct ASTParameterNode_s {
 typedef struct ASTParamterListNode_s {
     ASTNodeType type;
     int count;
-    ASTParameterNode** parameters;
+    ASTNode** parameters;
 } ASTParameterListNode;
 
 typedef enum {
@@ -223,11 +222,13 @@ void String_cleanUp(String* string) {
 }
 
 void ASTNode_cleanUp(ASTNode* node) { ASTNodeMethodsFor[node->type].cleanUp(node); }
-void ASTNode_print(ASTNode* node) { ASTNodeMethodsFor[node->type].print(node); }
+void ASTNode_print(ASTNode* node, int depth) { ASTNodeMethodsFor[node->type].print(node, depth); }
 void ASTNode_writeOut(FILE* out_file, ASTNode* node) { /* TODO: Generate C from AST */ }
 
 char* ASTSymbol_tryParse(FILE* in_file, ASTSymbol** symbol); 
 void ASTSymbol_cleanUp(ASTSymbol* symbol);
+
+char* SymbolExpression_tryParse(FILE* in_file, ASTNode** node);
 
 char* Operator_tryParse(FILE* in_file, ASTNode** node) {
 
@@ -380,7 +381,7 @@ char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* ASTParameterListNode_tryParse(FILE* in_file, ASTNode** node) {
+char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
 
     //TEMP
     printf("Trying to parse a parameter list\n");
@@ -596,8 +597,7 @@ char* SymbolExpression_tryParse(FILE* in_file, ASTNode** node) {
         return "Couldn't allocate memory for a symbol expression node";
     }
 
-    symbol_node->type = Expression;
-    symbol_node->expressionType = SymbolExpression;
+    symbol_node->type = SymbolExpression;
     symbol_node->symbol = symbol;
 
     *node = (ASTNode*)symbol_node;
@@ -606,6 +606,7 @@ char* SymbolExpression_tryParse(FILE* in_file, ASTNode** node) {
 }
 
 char* Declaration_tryParse(FILE* in_file, ASTNode** node); 
+char* Expression_tryParse(FILE* in_file, ASTNode** node);
 
 char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
 
@@ -765,7 +766,7 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
     }
 
     ASTDeclarationNode* declaration_node =
-        (ASTDeclarationNode*)malloc(sizeof(ASTDeclarationNode))
+        (ASTDeclarationNode*)malloc(sizeof(ASTDeclarationNode));
 
     if(declaration_node == 0) {
     
@@ -822,9 +823,9 @@ char* Module_tryParse(FILE* in_file, ASTNode** node) {
 
             int nextCapacity = (statementCapacity == 0) ? 1 : (statementCapacity * 2);
         
-            module_node->statement = (ASTStatementNode**)realloc(
+            module_node->statement = (ASTNode**)realloc(
                 module_node->statement,
-                nextCapacity * sizeof(ASTStatementNode*) );
+                nextCapacity * sizeof(ASTNode*) );
 
             if(module_node->statement == 0) {
 
