@@ -19,17 +19,58 @@ typedef struct ASTNode_s {
     ASTNodeType type;
 } ASTNode;
 
+typedef struct VoidList_s {
+    int capacity;
+    int count;
+    void** data;
+} VoidList;
+
+void VoidList_init(VoidList* vlist) {
+    vlist->capacity = 0;
+    vlist->count = 0;
+    vlist->data = 0;
+}
+
+char* VoidList_add(VoidList* vlist, void* entry) {
+
+    //TODO: There has to be a fast math way to calculate the
+    //      next highest power of 2 from an arbitrary number
+    if(vlist->capacity < (vlist->count + 1)) {
+
+        vlist->capacity = vlist->capacity == 0
+            ? 1
+            : (2 * vlist->capacity);
+
+        vlist->data = (void**)realloc(vlist->data, vlist->capacity * sizeof(void*));
+
+        if(!vlist->data) return "Failed to allocate space for a list";
+    }
+    
+    vlist->data[vlist->count++] = entry;
+
+    return 0;
+}
+
+void VoidList_cleanUp(VoidList* vlist) {
+
+    if(vlist->capacity > 0) free(vlist->data);
+}
+
 typedef void (*ASTNodePrinter)(ASTNode*, int);
 typedef void (*ASTNodeCleaner)(ASTNode*);
+typedef int (*ASTNodePredicate)(ASTNode*);
+typedef char* (*ASTNodeFinder)(ASTNode*, ASTNodePredicate, VoidList*);
 
 typedef struct ASTNodeMethods_s {
     ASTNodePrinter print;
     ASTNodeCleaner cleanUp;
+    ASTNodeFinder findAll;
 } ASTNodeMethods;
 
 #define AN_METHODS_DECL(n) \
     void AST ## n ## Node_print(ASTNode*, int); \
-    void AST ## n ## Node_cleanUp(ASTNode*)
+    void AST ## n ## Node_cleanUp(ASTNode*); \
+    char*  AST ## n ## Node_findAll(ASTNode*, ASTNodePredicate, VoidList*)
 
 AN_METHODS_DECL(Module);
 AN_METHODS_DECL(Declaration);
@@ -42,7 +83,11 @@ AN_METHODS_DECL(Lambda);
 
 
 #define AN_METHODS_STRUCT(n) \
-    (ASTNodeMethods){ AST ## n ## Node_print, AST ## n ## Node_cleanUp }
+    (ASTNodeMethods){ \
+        AST ## n ## Node_print, \
+        AST ## n ## Node_cleanUp, \
+        AST ## n ## Node_findAll \
+    } 
 
 const ASTNodeMethods ASTNodeMethodsFor[] = {
     AN_METHODS_STRUCT(Module),
@@ -139,7 +184,56 @@ typedef struct ASTLiteralNode_s {
 
 void ASTNode_cleanUp(ASTNode* node) { ASTNodeMethodsFor[node->type].cleanUp(node); }
 void ASTNode_print(ASTNode* node, int depth) { ASTNodeMethodsFor[node->type].print(node, depth); }
-void ASTNode_writeOut(FILE* out_file, ASTNode* node) { /* TODO: Generate C from AST */ }
+
+char* ASTTree_findAll(ASTNode* root, ASTNodePredicate matches, VoidList* out_list) {
+
+    VoidList vlist;
+    char* error;
+
+    VoidList_init(&vlist);
+
+    if(
+        matches(root) &&
+        ((error = VoidList_add(out_list, root)) != 0) ) {
+    
+        return error;
+    }
+
+    error = ASTNodeMethodsFor[root->type].findAll(root, matches, &vlist);
+
+    if(error != 0) {
+
+        VoidList_cleanUp(&vlist);
+
+        return error;
+    }
+
+    *out_list = vlist;
+
+    return 0;
+}
+
+int ASTNode_IsLambda(ASTNode* node) {
+    return node->type == Lambda;
+}
+
+char* ASTNode_writeOut(FILE* out_file, ASTNode* node) {
+    /* TODO: Generate C from AST */
+    //- Rip through AST for all lambdas, create the unique list of lambda method types, 
+    //  then write declarations of lambda method types and write definitions of lambda
+    //  functions. Also attach a reference to the underlying C function pointer type
+    //  to the respective lambda node so that we can later use that information to
+    //  apply the function pointer type to any variables that get assigned to this lambda
+
+    printf(
+        "============================================\n"
+        " Generating C source\n"
+        "============================================\n" );
+
+    VoidList lambdas;
+
+    char* errror = ASTTree_findAll(node, ASTNode_IsLambda, &lambdas);
+}
 
 char* ASTSymbol_tryParse(FILE* in_file, ASTSymbol** symbol); 
 void ASTSymbol_cleanUp(ASTSymbol* symbol);
@@ -169,7 +263,7 @@ void ASTModuleNode_print(ASTNode* node, int depth) {
 
 void ASTModuleNode_cleanUp(ASTNode* node) {
     
-     ASTModuleNode* module_node = (ASTModuleNode*)node;
+    ASTModuleNode* module_node = (ASTModuleNode*)node;
 
     for(int i = 0; i < module_node->statementCount; i++) {
         
@@ -177,6 +271,29 @@ void ASTModuleNode_cleanUp(ASTNode* node) {
     }
 
     free(module_node);
+}
+
+char* ASTModuleNode_findAll(ASTNode* root, ASTNodePredicate matches, VoidList* out_list) {
+
+    ASTModuleNode* module_node = (ASTModuleNode*)root;
+    char* error = 0;
+
+    for(int i = 0; i < module_node->statementCount; i++) {
+
+        if(
+            matches(module_node->statement[i]) &&
+            ((error = VoidList_add(out_list, module_node->statement[i])) != 0)) {
+
+            return error;
+        }
+
+        if((error = ASTTree_findAll(module_node->statement[i], matches, out_list)) != 0) {
+        
+            return error;
+        }
+    }
+
+    return 0;
 }
 
 void print_symbol(ASTSymbol* symbol, char* label) {
