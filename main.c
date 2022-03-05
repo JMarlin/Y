@@ -8,44 +8,49 @@ typedef enum {
     Declaration,
     Parameter,
     ParameterList,
-    SymbolExpression,
     Operator,
     Lambda,
+    Symbol,
     ASTNodeTypeCount
 } ASTNodeType;
 
+#define AN_COMMON_FIELDS \
+    ASTNodeType type; \
+    int childCount; \
+    struct ASTNode_s** children
+
 typedef struct ASTNode_s {
-    ASTNodeType type;
-    ASTNode* children;
+    AN_COMMON_FIELDS;
 } ASTNode;
 
-char* ASTNode_create(ASTNodeType type, int childCount, size_t nodeSize) {
+char* ASTNode_create(ASTNode** node, ASTNodeType type, int childCount, size_t nodeSize) {
 
-    ASTNode* node = (ASTNode*)malloc(nodeSize);
+    *node = (ASTNode*)malloc(nodeSize);
 
-    if(node == 0) {
+    if(*node == 0) {
         
         return "Could not allocate space for an AST node";
     }
 
     if(childCount == 0) {
     
-        node->children = 0;
+        (*node)->children = 0;
     } else {
 
-        node->children = (ASTNode*)malloc(sizeof(ASTNode*) * childCount);
+        (*node)->children = (ASTNode**)malloc(sizeof(ASTNode*) * childCount);
 
-        if(node->children == 0) {
+        if((*node)->children == 0) {
 
-            free(node);
+            free(*node);
 
             return "Could not allocate space for AST node children";
         }
     }
 
-    node->type = type;
+    (*node)->childCount = childCount;
+    (*node)->type = type;
 
-    return node;
+    return 0;
 }
 
 typedef struct VoidList_s {
@@ -88,18 +93,15 @@ void VoidList_cleanUp(VoidList* vlist) {
 typedef void (*ASTNodePrinter)(ASTNode*, int);
 typedef void (*ASTNodeCleaner)(ASTNode*);
 typedef int (*ASTNodePredicate)(ASTNode*);
-typedef char* (*ASTNodeFinder)(ASTNode*, ASTNodePredicate, VoidList*);
 
 typedef struct ASTNodeMethods_s {
     ASTNodePrinter print;
     ASTNodeCleaner cleanUp;
-    ASTNodeFinder findAll;
 } ASTNodeMethods;
 
 #define AN_METHODS_DECL(n) \
     void AST ## n ## Node_print(ASTNode*, int); \
-    void AST ## n ## Node_cleanUp(ASTNode*); \
-    char*  AST ## n ## Node_findAll(ASTNode*, ASTNodePredicate, VoidList*)
+    void AST ## n ## Node_cleanUp(ASTNode*);
 
 AN_METHODS_DECL(Module);
 AN_METHODS_DECL(Declaration);
@@ -114,7 +116,6 @@ AN_METHODS_DECL(Symbol);
     (ASTNodeMethods){ \
         AST ## n ## Node_print, \
         AST ## n ## Node_cleanUp, \
-        AST ## n ## Node_findAll \
     } 
 
 const ASTNodeMethods ASTNodeMethodsFor[] = {
@@ -132,321 +133,6 @@ typedef struct String_s {
     uint32_t length;
     char* data;
 } String;
-
-typedef struct ASTSymbolNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-    String* text;
-} ASTSymbolNode;
-
-#define PN_SYMBOL children[0]
-
-typedef struct ASTParameterNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-} ASTParameterNode;
-
-typedef struct ASTParameterListNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-} ASTParameterListNode;
-
-typedef enum {
-    OpAdd,
-    OpSubtract,
-    OpMultiply,
-    OpDivide,
-    OpInvalid
-} ASTOperatorType;
-
-const char* OperatorString[] = {
-    "Add",
-    "Subtract",
-    "Multiply",
-    "Divide",
-    "INVALID"
-};
-
-#define ON_LEFT_EXP children[0]
-#define ON_RIGHT_EXP children[1]
-
-typedef struct ASTOperatorNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-    ASTOperatorType operatorType;
-} ASTOperatorNode;
-
-#define DN_SYMBOL children[0]
-#define DN_INITIALIZER children[1]
-
-typedef struct ASTDeclarationNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-} ASTDeclarationNode;
-
-#define LN_PARAMS children[0]
-#define LN_EXP children[1]
-
-typedef struct ASTLambdaNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-} ASTLambdaNode;
-
-typedef struct ASTModuleNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-} ASTModuleNode;
-
-#define AN_SYMBOL children[0]
-#define AN_EXP children[1]
-
-typedef struct ASTAssignmentNode_s {
-    ASTNodeType type;
-    ASTNode* children;
-} ASTAssignmentNode;
-
-void ASTNode_cleanUp(ASTNode* node) { ASTNodeMethodsFor[node->type].cleanUp(node); }
-void ASTNode_print(ASTNode* node, int depth) { ASTNodeMethodsFor[node->type].print(node, depth); }
-
-char* ASTTree_findAll(ASTNode* root, ASTNodePredicate matches, VoidList* vlist) {
-
-    char* error;
-
-    VoidList_init(vlist);
-
-    if(
-        matches(root) &&
-        ((error = VoidList_add(vlist, root)) != 0) ) {
-    
-        return error;
-    }
-
-    error = ASTNodeMethodsFor[root->type].findAll(root, matches, &vlist);
-
-    if(error != 0) {
-
-        VoidList_cleanUp(vlist);
-
-        return error;
-    }
-
-    return 0;
-}
-
-int ASTNode_IsLambda(ASTNode* node) {
-    return node->type == Lambda;
-}
-
-char* ASTNode_writeOut(FILE* out_file, ASTNode* node) {
-    /* TODO: Generate C from AST */
-    //- Rip through AST for all lambdas, create the unique list of lambda method types, 
-    //  then write declarations of lambda method types and write definitions of lambda
-    //  functions. Also attach a reference to the underlying C function pointer type
-    //  to the respective lambda node so that we can later use that information to
-    //  apply the function pointer type to any variables that get assigned to this lambda
-
-    printf(
-        "============================================\n"
-        " Generating C source\n"
-        "============================================\n" );
-
-    VoidList lambdas;
-
-    char* errror = ASTTree_findAll(node, ASTNode_IsLambda, &lambdas);
-}
-
-char* Expression_tryParse(FILE* in_file, ASTNode** node);
-
-void print_indent(int depth) {
-    
-    for(int i = 0; i < depth; i++) {
-    
-        printf("    ");
-    }
-}
-
-void ASTModuleNode_print(ASTNode* node, int depth) {
-
-    ASTModuleNode* module_node = (ASTModuleNode*)node;
-    
-    print_indent(depth); printf("- Module\n");
-
-    for(int i = 0; i < module_node->statementCount; i++) {
-        
-        ASTNode_print(module_node->statement[i], depth + 1);
-    }
-}
-
-void ASTModuleNode_cleanUp(ASTNode* node) {
-    
-    ASTModuleNode* module_node = (ASTModuleNode*)node;
-
-    for(int i = 0; i < module_node->statementCount; i++) {
-        
-        ASTNode_cleanUp(module_node->statement[i]);
-    }
-
-    free(module_node);
-}
-
-char* ASTModuleNode_findAll(ASTNode* root, ASTNodePredicate matches, VoidList* out_list) {
-
-    ASTModuleNode* module_node = (ASTModuleNode*)root;
-    char* error = 0;
-
-    for(int i = 0; i < module_node->statementCount; i++) {
-
-        if(
-            matches(module_node->statement[i]) &&
-            ((error = VoidList_add(out_list, module_node->statement[i])) != 0)) {
-
-            return error;
-        }
-
-        if((error = ASTTree_findAll(module_node->statement[i], matches, out_list)) != 0) {
-        
-            return error;
-        }
-    }
-
-    return 0;
-}
-
-void ASTDeclarationNode_print(ASTNode* node, int depth) {
-    
-    ASTDeclarationNode* declaration_node = (ASTDeclarationNode*)node;
-
-    print_indent(depth); printf("- Declaration\n");
-    print_indent(depth); printf("  Symbol:");
-    ASTNode_print(declaration_node->symbol, depth + 1);
-    print_indent(depth); printf("  Initializer:\n");
-
-    ASTNode_print(declaration_node->initializer, depth + 1);
-}
-
-void ASTDeclarationNode_cleanUp(ASTNode* node) {
-
-    ASTDeclarationNode* declaration_node = (ASTDeclarationNode*)node;
-
-    ASTNode_cleanUp(declaration_node->DN_SYMBOL);
-    ASTNode_cleanUp(declaration_node->DN_INITIALIZER);
-
-    free(declaration_node);
-}
-
-void ASTParameterNode_print(ASTNode* node, int depth) {
-
-    ASTParameterNode* parameter_node = (ASTParameterNode*)node;
-
-    print_indent(depth); printf("- Parameter\n");
-    print_indent(depth); printf("  Symbol:\n");
-    
-    ASTNode_print(parameter_node->symbol, depth + 1);
-}
-
-void ASTParameterNode_cleanUp(ASTNode* node) {
-    
-    ASTParameterNode* parameter_node = (ASTParameterNode*)node;
-
-    ASTNode_cleanUp(parameter_node->PN_SYMBOL);
-
-    free(parameter_node);
-}
-
-void ASTParameterListNode_print(ASTNode* node, int depth) {
-
-    ASTParameterListNode* parameter_list_node = (ASTParameterListNode*)node;
-
-    print_indent(depth); printf("- Parameter List\n");
-
-    for(int i = 0; i < parameter_list_node->count; i++) {
-
-        ASTNode_print(parameter_list_node->parameters[i], depth + 1);
-    }
-}
-
-void ASTParameterListNode_cleanUp(ASTNode* node) {
-
-    ASTParameterListNode* parameter_list_node = (ASTParameterListNode*)node;
-
-    for(int i = 0; i < parameter_list_node->count; i++) {
-
-        ASTNode_cleanUp(parameter_list_node->parameters[i]);
-    }
-
-    free(parameter_list_node);
-}
-
-void ASTSymbolNode_print(ASTNode* node, int depth) {
-
-    ASTSymbolNode* symbol = (ASTSymbolNode*)node;
-
-    print_indent(depth); printf("- Symbol \n");
-    print_indent(depth); printf("  Text: %.*s\n", label, symbol->text->length, symbol->text->data);
-}
-
-void ASTOperatorNode_print(ASTNode* node, int depth) {
-
-    ASTOperatorNode* operator_node = (ASTOperatorNode*)node;
-
-    print_indent(depth); printf("- Operator\n");
-    print_indent(depth); printf("  Operation: %s\n", OperatorString[operator_node->operatorType]);
-    print_indent(depth); printf("  LeftExpr:\n");
-    ASTNode_print(operator_node->leftExpression, depth + 1);
-    print_indent(depth); printf("  RightExpr:\n");
-    ASTNode_print(operator_node->rightExpression, depth + 1);
-}
-
-void ASTOperatorNode_cleanUp(ASTNode* node) {
-
-    ASTOperatorNode* operator_node = (ASTOperatorNode*)node;
-
-    ASTNode_cleanUp(operator_node->leftExpression);
-    ASTNode_cleanUp(operator_node->rightExpression);
-
-    free(operator_node);
-}
-
-void ASTLambdaNode_print(ASTNode* node, int depth) {
-
-    ASTLambdaNode* lambda_node = (ASTLambdaNode*)node;
-
-    print_indent(depth); printf("- Lambda\n");
-    print_indent(depth); printf("  Parameters:\n");
-    ASTNode_print(lambda_node->parameters, depth + 1);
-    print_indent(depth); printf("  Body:\n");
-    ASTNode_print(lambda_node->expression, depth + 1);
-}
-
-void ASTLambdaNode_cleanUp(ASTNode* node) {
-
-    ASTLambdaNode* lambda_node = (ASTLambdaNode*)node;
-
-    ASTNode_cleanUp(lambda_node->parameters);
-    ASTNode_cleanUp(lambda_node->expression);
-
-    free(lambda_node);
-}
-
-void skip_whitespace(FILE* in_file) {
-    
-    char c = 0;
-    fpos_t last_pos;
-    
-    while(1) {
-
-        fgetpos(in_file, &last_pos);
-
-        if(fread(&c, 1, 1, in_file) != 1) return;
-
-        if(c > 0x20) {
-        
-            fsetpos(in_file, &last_pos);
-            
-            return;
-        }
-    }
-}
 
 void String_init(String* string, char* s) {
 
@@ -469,6 +155,7 @@ String* String_new(char* s) {
 char* String_append(String* target, String* source) {
 
     int reallocate = 0;
+    int original_capacity = target->capacity;
     
     //TODO: There has to be a fast math way to calculate the
     //      next highest power of 2 from an arbitrary number
@@ -483,9 +170,17 @@ char* String_append(String* target, String* source) {
 
     if(reallocate) {
 
+        char* last_data = target->data;
+        int precopy = original_capacity == 0 && target->data != 0;
+
+        if(original_capacity == 0) target->data = 0;
+
         target->data = (char*)realloc(target->data, target->capacity);
 
         if(!target->data) return "Failed to reallocate string buffer";
+     
+        //TODO: error handle
+        if(precopy) strncpy(target->data, last_data, target->length);
     }
 
     //TODO: error handle
@@ -507,11 +202,741 @@ char* String_appendChar(String* string, char c) {
     String_append(string, &temp);
 }
 
+char* String_appendCString(String* string, char* s) {
+
+    String temp;
+
+    temp.capacity = 0;
+    temp.length = strlen(s);
+    temp.data = s;
+
+    String_append(string, &temp);
+}
+
 void String_cleanUp(String* string) {
 
     if(string->capacity > 0) free(string->data);
 
     free(string);
+}
+
+typedef struct ASTSymbolNode_s {
+    AN_COMMON_FIELDS;
+    String* text;
+} ASTSymbolNode;
+
+#define PN_SYMBOL children[0]
+
+typedef struct ASTParameterNode_s {
+    AN_COMMON_FIELDS;
+} ASTParameterNode;
+
+typedef struct ASTParameterListNode_s {
+    AN_COMMON_FIELDS;
+} ASTParameterListNode;
+
+typedef enum {
+    OpAdd,
+    OpSubtract,
+    OpMultiply,
+    OpDivide,
+    OpInvalid
+} ASTOperatorType;
+
+const char* OperatorString[] = {
+    "Add",
+    "Subtract",
+    "Multiply",
+    "Divide",
+    "INVALID"
+};
+
+#define ON_LEFT_EXPR children[0]
+#define ON_RIGHT_EXPR children[1]
+
+typedef struct ASTOperatorNode_s {
+    AN_COMMON_FIELDS;
+    ASTOperatorType operatorType;
+} ASTOperatorNode;
+
+#define DN_SYMBOL children[0]
+#define DN_INITIALIZER children[1]
+
+typedef struct ASTDeclarationNode_s {
+    AN_COMMON_FIELDS;
+} ASTDeclarationNode;
+
+#define LN_PARAMS children[0]
+#define LN_EXPR children[1]
+
+typedef struct ASTLambdaNode_s {
+    AN_COMMON_FIELDS;
+} ASTLambdaNode;
+
+typedef struct ASTModuleNode_s {
+    AN_COMMON_FIELDS;
+} ASTModuleNode;
+
+#define AN_SYMBOL children[0]
+#define AN_EXPR children[1]
+
+typedef struct ASTAssignmentNode_s {
+    AN_COMMON_FIELDS;
+} ASTAssignmentNode;
+
+void ASTNode_cleanUp(ASTNode* node) {
+    
+    for(int i = 0; i < node->childCount; i++) {
+
+        ASTNode_cleanUp(node->children[i]);
+    }
+    
+    ASTNodeMethodsFor[node->type].cleanUp(node);
+
+    free(node);
+}
+
+void ASTNode_print(ASTNode* node, int depth) { ASTNodeMethodsFor[node->type].print(node, depth); }
+
+char* ASTTree_findAllInner(ASTNode* root, ASTNodePredicate matches, VoidList* vlist) {
+
+    char* error = 0;
+
+    if(
+        matches(root) &&
+        ((error = VoidList_add(vlist, root)) != 0) ) {
+    
+        return error;
+    }
+
+    for(int i = 0; i < root->childCount; i++) {
+
+        if((error = ASTTree_findAllInner(root->children[i], matches, vlist)) != 0) {
+
+            return error;
+        }
+    }
+
+    if(error != 0) {
+
+        return error;
+    }
+
+    return 0;
+}
+
+char* ASTTree_findAll(ASTNode* root, ASTNodePredicate matches, VoidList* vlist) {
+
+    VoidList_init(vlist);
+
+    char* error = ASTTree_findAllInner(root, matches, vlist);
+
+    if(error != 0) VoidList_cleanUp(vlist);
+
+    return error;
+}
+
+int ASTNode_IsLambda(ASTNode* node) {
+    
+    return node->type == Lambda;
+}
+
+char* Lambda_generateCBody(ASTNode* node, int lambda_id, String** out_str) {
+
+    char* error = 0;
+
+    *out_str = String_new("int Lambda");
+
+    if(*out_str == 0) {
+
+        return "Unable to allocate a string for lambda body write-out";
+    }
+
+    char num_buf[50] = {0};
+
+    sprintf(num_buf, "%i", lambda_id);
+
+    if((error = String_appendCString(*out_str, num_buf)) != 0) {
+
+        String_cleanUp(*out_str);
+
+        return error;
+    }
+
+    if((error = String_appendCString(*out_str, "(")) != 0) {
+
+        String_cleanUp(*out_str);
+
+        return error;
+    }
+
+    for(int i = 0; i < node->LN_PARAMS->childCount; i++) {
+
+        char* param_str = i == 0 ? "int " : ", int ";
+
+        if((error = String_appendCString(*out_str, param_str)) != 0) {
+
+            String_cleanUp(*out_str);
+
+            return error;
+        }   
+
+        ASTSymbolNode* symbol = (ASTSymbolNode*)node->LN_PARAMS->children[i]->PN_SYMBOL;
+
+        if((error = String_append(*out_str, symbol->text)) != 0) {
+
+            String_cleanUp(*out_str);
+
+            return error;
+        }
+    }
+
+    if((error = String_appendCString(*out_str, ") {\n    return ")) != 0) {
+
+        String_cleanUp(*out_str);
+
+        return error;
+    }
+
+    return 0;
+}
+
+typedef struct TemplateInfo_s {
+    const char* templateName;
+    const char* template;
+    struct Template_s* compiledTemplate;
+} TemplateInfo;
+
+typedef struct TemplateConfig_s {
+    const char* baseTemplateName[ASTNodeTypeCount];
+    int templateCount;
+    TemplateInfo templateList[];
+} TemplateConfig;
+
+TemplateConfig CTemplateConfig = {
+    (const char(*)[]){
+        //TODO
+        //EG, for Lambda
+        "lambda_declarations"
+    },
+    (TemplateInfo[]){
+        (TemplateInfo){
+            "lambda_declarations",
+            "typedef int (*Lambda{{ia0}}Type){{t(param_type_list)c0}};", 0
+        },
+        (TemplateInfo){
+            "param_type_list",
+            "({{rt(param_type)}})", 0
+        },
+        (TemplateInfo)&{
+            "param_type",
+            "{{b(!first)( ,)}}int", 0
+        }
+    }
+};
+
+char* TemplateConfig_lookUp(TemplateConfig* config, char* template_name, TemplateInfo** template_info) {
+
+    char* error;
+
+    for(int i = 0; i < config->templateCount; i++) {
+
+        if(strcmp(config->templateList[i].templateName, template_name) == 0) {
+
+            *template_info = &config->templateList[i];
+            
+            return 0;
+        }
+    }
+
+    return "Specified template name was not found in the template list";
+}
+
+char* Template_compile(TemplateConfig* config, char* template, Template** out_template) {
+
+    //TODO: HERE
+}
+
+char* Template_getCompiled(TemplateConfig* config, char* template_name, Template** out_template) {
+
+    char* error;
+    TemplateInfo* template_info;
+
+    if((error = TemplateConfig_lookUp(config, template_name, &template_info)) != 0) return error;
+
+    if(
+        (template_info->compiledTemplate == 0) &&
+        ((error = Template_compile(
+            config,
+            template_info->template,
+            &template_info->compiledTemplate)) != 0) ) return error;
+    
+    *out_template = template_info->compiledTemplate;
+
+    return 0;
+}
+
+char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out_string) {
+
+    char* error;
+    Template* template;
+
+    if((error = Template_getCompiled(
+        config,
+        config->baseTemplateName[node->type],
+        &template)) != 0
+    ) return error;
+
+    if((error = Template_renderCompiled(config, template, node)) != 0) return error;
+
+    return 0;
+}
+
+typedef enum {
+    ChildIndex,
+    TemplateCondition
+} TemplateExpressionSubtype;
+
+typedef struct Template_s {
+    VoidList segments;
+    VoidList expressions;
+} Template;
+
+typedef struct TemplateExpression_s {
+    char typeCode;
+    TemplateExpresionSubtype subType;
+    int expressionCode;
+    struct TemplateExpression_s* subTemplate;
+} TemplateExpression;
+
+char* Template_compile(const char* template_str, Template** template) {
+
+    char* error;
+
+    *template = (Template*)malloc(sizeof(Template));
+
+    if(*template == 0) return "Failed to allocate memory for a template";
+    
+    if((error = VoidList_init(&(*template)->segments)) != 0) {
+
+        free(*template);
+        
+        return error;
+    }
+
+    if((error = VoidList_init(&(*template)->expressions)) != 0) {
+        
+        free(*template);
+        
+        return error;
+    }
+
+    if((error = VoidList_init(&(*template)->subTemplates)) != 0) {
+
+        free(*template);
+        
+        return error;
+    }
+
+    int state = 0;
+    char* end_pos = template_str;
+    char* start_pos = template_str;
+
+    for(; *template_str != 0; template_str++) {
+
+        switch(state) {
+
+            //Looking for the start of an expression node
+            case 0:
+                if(*template_str == '{') {
+                    state = 1;
+                } else {
+                    end_pos = template_str;
+                }
+                break;
+
+            //Looking for the second brace in an expression node
+            case 1:
+                if(*template_str == '{') {
+
+                    String* segment
+
+                    if((error = String_sliceCString(start_pos, end_pos, &segment)) != 0) {
+                        
+                        //TODO: Clean up everything
+                        return error;
+                    }
+
+                    VoidList_add(&(*template)->segments, segment);
+                    start_pos = template_str + 1;
+                    end_pos = start_pos;
+
+                    state = 2;
+                } else {
+
+                    end_pos = template_str;
+                    state = 0;
+                }
+                break;
+
+            //Looking for the closing brace in an expression node
+            case 2:
+                if(*template_str == '}') {
+                    state = 3;
+                } else {
+                    end_pos = template_str;
+                }
+                break;
+
+            case 3:
+                if(*template_str == '}') {
+
+                    TemplateExpression* expr;
+
+                    if((error = TemplateExpression_tryParse(start_pos, end_pos, &expr)) != 0) {
+                        
+                        //TODO: Clean up everything
+                        return error;
+                    }
+
+                    VoidList_add(&(*template)->expresions, expr);
+                    start_pos = template_str + 1;
+                    end_pos = start_pos;
+                } else {
+
+                    end_pos = template_str;
+                }
+
+                state = 0;
+
+                break;
+
+        }
+    }   
+}
+
+char* Lambda_generateCType(ASTNode* node, int lambda_id, String** out_str) {
+
+    char* error = 0;
+
+    *out_str = String_new("typedef int (*Lambda");
+
+    if(*out_str == 0) {
+
+        return "Unable to allocate a string for lambda declaration write-out";
+    }
+
+    char num_buf[50] = {0};
+
+    sprintf(num_buf, "%i", lambda_id);
+
+    if((error = String_appendCString(*out_str, num_buf)) != 0) {
+
+        String_cleanUp(*out_str);
+
+        return error;
+    }
+
+    if((error = String_appendCString(*out_str, "Type)(")) != 0) {
+
+        String_cleanUp(*out_str);
+
+        return error;
+    }
+
+    for(int i = 0; i < node->LN_PARAMS->childCount; i++) {
+
+        char* param_str = i == 0 ? "int" : ", int";
+
+        if((error = String_appendCString(*out_str, param_str)) != 0) {
+
+            String_cleanUp(*out_str);
+
+            return error;
+        }   
+    }
+
+    if((error = String_appendCString(*out_str, ");\n")) != 0) {
+
+        String_cleanUp(*out_str);
+
+        return error;
+    }
+
+    return 0;
+}
+
+char* ASTNode_writeOut(FILE* out_file, ASTNode* node) {
+    /* TODO: Generate C from AST */
+    //- Rip through AST for all lambdas, create the unique list of lambda method types, 
+    //  then write declarations of lambda method types and write definitions of lambda
+    //  functions. Also attach a reference to the underlying C function pointer type
+    //  to the respective lambda node so that we can later use that information to
+    //  apply the function pointer type to any variables that get assigned to this lambda
+
+    printf(
+        "============================================\n"
+        " Generating C source\n"
+        "============================================\n" );
+
+    VoidList lambdas;
+
+    printf("Looking for lambdas...\n");
+
+    char* error = ASTTree_findAll(node, ASTNode_IsLambda, &lambdas);
+
+    if(error != 0) {
+
+        printf("Error: %s\n", error);
+
+        VoidList_cleanUp(&lambdas);
+    }
+
+    printf("Found %i lambdas\n", lambdas.count);
+
+    for(int i = 0; i < lambdas.count; i++) {
+
+        ASTNode_print(lambdas.data[i], 0);
+
+        String* code_str;
+
+        error = Lambda_generateCType(lambdas.data[i], i, &code_str);
+
+        if(error != 0) {
+
+            VoidList_cleanUp(&lambdas);
+
+            return error;
+        }
+
+        printf("%.*s", code_str->length, code_str->data);
+        fprintf(out_file, "%.*s", code_str->length, code_str->data);
+
+        String_cleanUp(code_str);
+
+        error = Lambda_generateCBody(lambdas.data[i], i, &code_str);
+
+        if(error != 0) {
+
+            VoidList_cleanUp(&lambdas);
+
+            return error;
+        }
+ 
+        printf("%.*s", code_str->length, code_str->data);
+        fprintf(out_file, "%.*s", code_str->length, code_str->data);
+    }
+
+    return 0;
+
+    VoidList_cleanUp(&lambdas);
+}
+
+char* Expression_tryParse(FILE* in_file, ASTNode** node);
+
+void print_indent(int depth) {
+    
+    for(int i = 0; i < depth; i++) {
+    
+        printf("    ");
+    }
+}
+
+void ASTModuleNode_print(ASTNode* node, int depth) {
+
+    ASTModuleNode* module_node = (ASTModuleNode*)node;
+    
+    print_indent(depth); printf("- Module\n");
+
+    for(int i = 0; i < module_node->childCount; i++) {
+        
+        ASTNode_print(module_node->children[i], depth + 1);
+    }
+}
+
+void ASTModuleNode_cleanUp(ASTNode* node) { }
+
+void ASTDeclarationNode_print(ASTNode* node, int depth) {
+    
+    print_indent(depth); printf("- Declaration\n");
+    print_indent(depth); printf("  Symbol:\n");
+
+    ASTNode_print(node->DN_SYMBOL, depth + 1);
+
+    print_indent(depth); printf("  Initializer:\n");
+
+    ASTNode_print(node->DN_INITIALIZER, depth + 1);
+}
+
+void ASTDeclarationNode_cleanUp(ASTNode* node) { }
+
+void ASTParameterNode_print(ASTNode* node, int depth) {
+
+    print_indent(depth); printf("- Parameter\n");
+    print_indent(depth); printf("  Symbol:\n");
+    
+    ASTNode_print(node->PN_SYMBOL, depth + 1);
+}
+
+void ASTParameterNode_cleanUp(ASTNode* node) { }
+
+void ASTParameterListNode_print(ASTNode* node, int depth) {
+
+    print_indent(depth); printf("- Parameter List\n");
+
+    for(int i = 0; i < node->childCount; i++) {
+
+        ASTNode_print(node->children[i], depth + 1);
+    }
+}
+
+void ASTParameterListNode_cleanUp(ASTNode* node) { }
+
+void ASTSymbolNode_print(ASTNode* node, int depth) {
+
+    ASTSymbolNode* symbol = (ASTSymbolNode*)node;
+
+    print_indent(depth); printf("- Symbol \n");
+    print_indent(depth); printf("  Text: %.*s\n", symbol->text->length, symbol->text->data);
+}
+
+void String_cleanUp(String*);
+
+void ASTSymbolNode_cleanUp(ASTNode* node) {
+
+    ASTSymbolNode* symbol_node = (ASTSymbolNode*)node;
+
+    String_cleanUp(symbol_node->text);
+}
+
+void ASTOperatorNode_print(ASTNode* node, int depth) {
+
+    ASTOperatorNode* operator_node = (ASTOperatorNode*)node;
+
+    print_indent(depth); printf("- Operator\n");
+    print_indent(depth); printf("  Operation: %s\n", OperatorString[operator_node->operatorType]);
+    print_indent(depth); printf("  LeftExpr:\n");
+    ASTNode_print(operator_node->ON_LEFT_EXPR, depth + 1);
+    print_indent(depth); printf("  RightExpr:\n");
+    ASTNode_print(operator_node->ON_RIGHT_EXPR, depth + 1);
+}
+
+void ASTOperatorNode_cleanUp(ASTNode* node) { }
+
+void ASTLambdaNode_print(ASTNode* node, int depth) {
+
+    ASTLambdaNode* lambda_node = (ASTLambdaNode*)node;
+
+    print_indent(depth); printf("- Lambda\n");
+    print_indent(depth); printf("  Parameters:\n");
+
+    ASTNode_print(lambda_node->LN_PARAMS, depth + 1);
+
+    print_indent(depth); printf("  Body:\n");
+
+    ASTNode_print(lambda_node->LN_EXPR, depth + 1);
+}
+
+void ASTLambdaNode_cleanUp(ASTNode* node) { }
+
+void skip_whitespace(FILE* in_file) {
+    
+    char c = 0;
+    fpos_t last_pos;
+    
+    while(1) {
+
+        fgetpos(in_file, &last_pos);
+
+        if(fread(&c, 1, 1, in_file) != 1) return;
+
+        if(c > 0x20) {
+        
+            fsetpos(in_file, &last_pos);
+            
+            return;
+        }
+    }
+}
+
+char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
+
+    //TEMP
+    //printf("Trying to parse a symbol\n");
+
+    fpos_t original_position, previous_position;
+    char* error;
+    char c = 0;
+    String* symbol_text = String_new(0);
+
+    if(!symbol_text) return "Unable to allocate String for symbol text";
+
+    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+
+    skip_whitespace(in_file);
+
+    for(int i = 0; ; i++) {
+
+        if(fgetpos(in_file, &previous_position) != 0) {
+
+            fsetpos(in_file, &original_position);
+
+            String_cleanUp(symbol_text);
+            
+            return "Failed to get file position";
+        }
+
+        if(fread(&c, 1, 1, in_file) != 1) break;
+
+        if(
+            (c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') ||
+            (i > 0 && c >= '0' && c <= '9') ||
+            (c == '_')
+        ) {
+
+            error = String_appendChar(symbol_text, c);
+
+            if(error != 0) {
+        
+                fsetpos(in_file, &original_position);
+
+                String_cleanUp(symbol_text);
+
+                return error;
+            }
+
+            continue;
+        }
+
+        if(i == 0) {
+
+            fsetpos(in_file, &original_position);
+
+            String_cleanUp(symbol_text);
+
+            return "Symbol did not begin with a valid character";
+        }
+
+        fsetpos(in_file, &previous_position);
+
+        break;
+    }
+
+    error = ASTNode_create(node, Symbol, 0, sizeof(ASTSymbolNode));
+
+    if(*node == 0) {
+
+        fsetpos(in_file, &original_position);
+
+        String_cleanUp(symbol_text);
+
+        return "Couldn't allocate memory for ast symbol";
+    }
+
+    ((ASTSymbolNode*)*node)->text = symbol_text;
+
+    return 0;
 }
 
 char* Operator_tryParse(FILE* in_file, ASTNode** node) {
@@ -527,7 +952,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
 
     ASTNode* left_expr;
 
-    char* left_error = SymbolExpression_tryParse(in_file, &left_expr);
+    char* left_error = Symbol_tryParse(in_file, &left_expr);
 
     if(left_error != 0) {
     
@@ -572,7 +997,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
     
     ASTNode* right_expr;
 
-    char* right_error = SymbolExpression_tryParse(in_file, &right_expr);
+    char* right_error = Symbol_tryParse(in_file, &right_expr);
 
     if(right_error != 0) {
     
@@ -583,10 +1008,9 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
         return right_error;
     }
 
-    ASTOperatorNode* operator =
-        (ASTOperatorNode*)malloc(sizeof(ASTOperatorNode));
+    char* error = ASTNode_create(node, Operator, 2, sizeof(ASTOperatorNode));
 
-    if(operator == 0) {
+    if(error != 0) {
 
         fsetpos(in_file, &original_position);
 
@@ -596,12 +1020,8 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
         return "Failed to allocate memory for an operator node";
     }
 
-    operator->type = Operator;
-    operator->operatorType = op_type;
-    operator->leftExpression = left_expr;
-    operator->rightExpression = right_expr;
-
-    *node = (ASTNode*)operator;
+    (*node)->ON_LEFT_EXPR = left_expr;
+    (*node)->ON_RIGHT_EXPR = right_expr;
 
     return 0;
 }
@@ -641,14 +1061,13 @@ char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
 
     skip_whitespace(in_file);
 
-    char* error = ASTNode_tryParse(in_file, &symbol);
+    char* error = Symbol_tryParse(in_file, &symbol);
 
     if(error != 0) return error;
 
-    ASTParameterNode* parameter_node =
-        (ASTParameterNode*)malloc(sizeof(ASTParameterNode));
+    error = ASTNode_create(node, Parameter, 1, sizeof(ASTParameterNode));
 
-    if(parameter_node == 0) {
+    if(error != 0) {
     
         fsetpos(in_file, &original_position);
 
@@ -657,10 +1076,7 @@ char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
         return "Unable to allocate space for new parameter declaration node";
     }
 
-    parameter_node->type = Parameter;
-    parameter_node->symbol = symbol;
-
-    *node = (ASTNode*)parameter_node;
+    (*node)->PN_SYMBOL = symbol;
 
     return 0;
 }
@@ -671,6 +1087,7 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
     //printf("Trying to parse a parameter list\n");
 
     fpos_t original_position;
+    char* error;
 
     if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
 
@@ -691,7 +1108,7 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
     
         ASTNode* parameter;
 
-        char* error = Parameter_tryParse(in_file, &parameter);
+        error = Parameter_tryParse(in_file, &parameter);
 
         if(error) {
 
@@ -748,10 +1165,9 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
         return "Expected a closing parenthesis at the end of parameter list";
     }
 
-    ASTParameterListNode* parameterList =
-        (ASTParameterListNode*)malloc(sizeof(ASTParameterListNode));
+    error = ASTNode_create(node, ParameterList, 0, sizeof(ASTParameterListNode));
 
-    if(parameterList == 0) {
+    if(error != 0) {
 
         if(paramDeclarationsCount > 0) free(paramDeclarations);
 
@@ -760,103 +1176,9 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
         return "Failed to allocate memory for parameter list";
     }
 
-    parameterList->type = ParameterList;
-    parameterList->count = paramDeclarationsCount;
-    parameterList->parameters = paramDeclarations;
+    (*node)->childCount = paramDeclarationsCount;
+    (*node)->children = paramDeclarations;
     
-    *node = (ASTNode*)parameterList;
-
-    return 0;
-}
-
-void ASTSymbolNode_cleanUp(ASTNode* node) {
-    
-    ASTSymbolNode* symbol = (ASTSymbolNode*)node;
-
-    String_cleanUp(symbol->text);
-
-    free(symbol);
-}
-
-char* ASTSymbolNode_tryParse(FILE* in_file, ASTNode** symbol) {
-
-    //TEMP
-    //printf("Trying to parse a symbol\n");
-
-    fpos_t original_position, previous_position;
-    char c = 0;
-    String* symbol_text = String_new(0);
-
-    if(!symbol_text) return "Unable to allocate String for symbol text";
-
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    skip_whitespace(in_file);
-
-    for(int i = 0; ; i++) {
-
-        if(fgetpos(in_file, &previous_position) != 0) {
-
-            fsetpos(in_file, &original_position);
-
-            String_cleanUp(symbol_text);
-            
-            return "Failed to get file position";
-        }
-
-        if(fread(&c, 1, 1, in_file) != 1) break;
-
-        if(
-            (c >= 'a' && c <= 'z') ||
-            (c >= 'A' && c <= 'Z') ||
-            (i > 0 && c >= '0' && c <= '9') ||
-            (c == '_')
-        ) {
-
-            char* error = String_appendChar(symbol_text, c);
-
-            if(error != 0) {
-        
-                fsetpos(in_file, &original_position);
-
-                String_cleanUp(symbol_text);
-
-                return error;
-            }
-
-            continue;
-        }
-
-        if(i == 0) {
-
-            fsetpos(in_file, &original_position);
-
-            String_cleanUp(symbol_text);
-
-            return "Symbol did not begin with a valid character";
-        }
-
-        fsetpos(in_file, &previous_position);
-
-        break;
-    }
-
-    ASTSymbolNode* symbol = (ASTSymbol*)malloc(sizeof(ASTSymbol));
-
-    if(!symbol) {
-
-        fsetpos(in_file, &original_position);
-
-        String_cleanUp(symbol_text);
-
-        return "Couldn't allocate memory for ast symbol";
-    }
-
-    symtol->type = Symbol;
-    symbol->text = symbol_text;
-
-    *node = (ASTNode*)symbol;
-
     return 0;
 }
 
@@ -919,10 +1241,9 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
         return expression_error;
     }
 
-    ASTLambdaNode* lambda =
-        (ASTLambdaNode*)malloc(sizeof(ASTLambdaNode));
+    char* error = ASTNode_create(node, Lambda, 2, sizeof(ASTLambdaNode));
 
-    if(!lambda)  {
+    if(error != 0)  {
 
         ASTNode_cleanUp(parameterList);
         ASTNode_cleanUp(expression);
@@ -932,11 +1253,8 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
         return expression_error;
     }
 
-    lambda->type = Lambda;
-    lambda->parameters = parameterList;
-    lambda->expression = expression;
-
-    *node = (ASTNode*)lambda;
+    (*node)->LN_PARAMS = parameterList;
+    (*node)->LN_EXPR = expression;
 
     return 0;
 }
@@ -984,11 +1302,11 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
         return "Declaration statement did not begin with 'var' keyword";
     }
     
-    ASTSymbol* lvalue;
+    ASTNode* lvalue;
 
     skip_whitespace(in_file);
 
-    char* error = ASTSymbol_tryParse(in_file, &lvalue);
+    char* error = Symbol_tryParse(in_file, &lvalue);
 
     if(error != 0) return error;
 
@@ -1005,7 +1323,7 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
         if(error != 0) {
 
             fsetpos(in_file, &original_position);
-            ASTSymbol_cleanUp(lvalue);
+            ASTNode_cleanUp(lvalue);
 
             return error;
         }
@@ -1018,35 +1336,31 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
     if(fread(&sc, 1, 1, in_file) != 1 || sc != ';') {
 
         fsetpos(in_file, &original_position);
-        ASTSymbol_cleanUp(lvalue);
+        ASTNode_cleanUp(lvalue);
 
         if(rvalue != 0) ASTNode_cleanUp(rvalue);
 
         return "No semicolon following logical end of declaration statement";
     }
 
-    ASTDeclarationNode* declaration_node =
-        (ASTDeclarationNode*)malloc(sizeof(ASTDeclarationNode));
+    error = ASTNode_create(node, Declaration, 2, sizeof(ASTDeclarationNode));
 
-    if(declaration_node == 0) {
+    if(error != 0) {
     
         fsetpos(in_file, &original_position);
-        ASTSymbol_cleanUp(lvalue);
+        ASTNode_cleanUp(lvalue);
         if(rvalue != 0) ASTNode_cleanUp(rvalue);
 
         return "Unable to allocate space for new declaration statement node";
     }
 
-    declaration_node->type = Declaration;
-    declaration_node->symbol = lvalue;
-    declaration_node->initializer = rvalue;
-
-    *node = (ASTNode*)declaration_node;
+    (*node)->DN_SYMBOL = lvalue;
+    (*node)->DN_INITIALIZER = rvalue;
 
     return 0;
 }
 
-char* ASTStatementNode_tryParse(FILE* in_file, ASTNode** node) {
+char* Statement_tryParse(FILE* in_file, ASTNode** node) {
 
     //TEMP
     //printf("Trying to parse a statement\n");
@@ -1069,25 +1383,19 @@ char* Module_tryParse(FILE* in_file, ASTNode** node) {
     char* inner_error = 0;
     ASTNode* new_statement;
 
-    ASTModuleNode* module_node = (ASTModuleNode*)malloc(sizeof(ASTModuleNode));
+    inner_error = ASTNode_create(node, Module, 0, sizeof(ASTModuleNode));
 
-    if(module_node == 0) return "Unable to allocate memory for a module node";
+    if(inner_error != 0) return "Unable to allocate memory for a module node";
 
-    module_node->type = Module;
-    module_node->statementCount = 0;
-    module_node->statement = 0;
-
-    while((!feof(in_file)) && ((inner_error = ASTStatementNode_tryParse(in_file, &new_statement)) == 0)) {
+    while((!feof(in_file)) && ((inner_error = Statement_tryParse(in_file, &new_statement)) == 0)) {
         
-        if(statementCapacity < (module_node->statementCount + 1)) {
+        if(statementCapacity < ((*node)->childCount + 1)) {
 
             int nextCapacity = (statementCapacity == 0) ? 1 : (statementCapacity * 2);
         
-            module_node->statement = (ASTNode**)realloc(
-                module_node->statement,
-                nextCapacity * sizeof(ASTNode*) );
+            (*node)->children = (ASTNode**)realloc((*node)->children, nextCapacity * sizeof(ASTNode*));
 
-            if(module_node->statement == 0) {
+            if((*node)->children == 0) {
 
                 inner_error = "Failed to allocate statement memory when constructing module node";
 
@@ -1097,12 +1405,10 @@ char* Module_tryParse(FILE* in_file, ASTNode** node) {
             statementCapacity = nextCapacity;
         }
 
-        module_node->statement[module_node->statementCount++] = new_statement;
+        (*node)->children[(*node)->childCount++] = new_statement;
 
         skip_whitespace(in_file);
     }
-
-    *node = (ASTNode*)module_node;
 
     return inner_error;
 }
