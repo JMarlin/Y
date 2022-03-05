@@ -213,6 +213,19 @@ char* String_appendCString(String* string, char* s) {
     String_append(string, &temp);
 }
 
+char* String_sliceCString(char* start, char* end, String** string) {
+
+    *string = (String*)malloc(sizeof(String));
+
+    if(*string == 0) return "Failed to allocate space for a new sliced string";
+
+    (*string)->capacity = 0;
+    (*string)->length = (int)end - (int)start;
+    (*string)->data = start;
+
+    return 0;
+}
+
 void String_cleanUp(String* string) {
 
     if(string->capacity > 0) free(string->data);
@@ -401,10 +414,15 @@ char* Lambda_generateCBody(ASTNode* node, int lambda_id, String** out_str) {
     return 0;
 }
 
+typedef struct Template_s {
+    VoidList segments;
+    VoidList expressions;
+} Template;
+
 typedef struct TemplateInfo_s {
     const char* templateName;
     const char* template;
-    struct Template_s* compiledTemplate;
+    Template* compiledTemplate;
 } TemplateInfo;
 
 typedef struct TemplateConfig_s {
@@ -435,13 +453,16 @@ TemplateConfig CTemplateConfig = {
     }
 };
 
-char* TemplateConfig_lookUp(TemplateConfig* config, char* template_name, TemplateInfo** template_info) {
+char* TemplateConfig_lookUp(TemplateConfig* config, String* template_name, TemplateInfo** template_info) {
 
     char* error;
 
     for(int i = 0; i < config->templateCount; i++) {
 
-        if(strcmp(config->templateList[i].templateName, template_name) == 0) {
+        if(strncmp(
+            config->templateList[i].templateName,
+            template_name->data,
+            template_name->length) == 0) {
 
             *template_info = &config->templateList[i];
             
@@ -452,12 +473,335 @@ char* TemplateConfig_lookUp(TemplateConfig* config, char* template_name, Templat
     return "Specified template name was not found in the template list";
 }
 
-char* Template_compile(TemplateConfig* config, char* template, Template** out_template) {
+typedef struct TemplateExpression_s {
+    char typeCode;
+    String* sourcePath;
+    Template* template;
+} TemplateExpression;
 
-    //TODO: HERE
+char* cstr_skip_whitespace(char** s, char* end, int expect_more) {
+
+    for(; (*s) != end; (*s)++) if(**s > 0x20) return 0;
+
+    return expect_more ? "Hit the end of a cstr while skipping whitespace" : 0;
 }
 
-char* Template_getCompiled(TemplateConfig* config, char* template_name, Template** out_template) {
+char* TemplateExpression_tryParse(
+    TemplateConfig* config, char* s, char* end_pos, TemplateExpression** out_expr) {
+
+    char* error;
+    TemplateExpression expr = {0};
+
+    if((error = cstr_skip_whitespace(&s, end_pos, 1)) != 0) return error;
+
+    if(s == end_pos) return "Expected a qualifier following expression type, but found end of string";
+
+    expr.typeCode = *(s++);
+
+    if(
+        expr.typeCode != 'e' &&
+        expr.typeCode != 'c' &&
+        expr.typeCode != 't' &&
+        expr.typeCode != 'i' &&
+        expr.typeCode != 's'
+    ) {
+
+        return "Encountered an unrecognized template expression type code";
+    }
+
+    //Expand format:
+    //e<child_path>`text_expr`
+    //    child_path: rule for navigating to the child to expand
+    //                if there is no path, the target is the current node
+    //                if the path ends in a 's', the inner template is expanded only for the one child
+    //                if the path does not end in an 's', the inner template is expanded for each
+    //                child in the terminal node
+    //    text_expr:  embedded template that will be compiled and inserted into the compiled expression
+    if(typeCode == 'e') {
+        
+        int len = 0;
+        
+        if(*s != '`') {
+
+            //TODO: Clean up everything
+            return "Expected a '`' following 'e' template expression code";
+        }
+
+        for(len = 0; &s[len] != end_pos; len++) if(s[len] == '`') break;
+
+        if(&s[len] == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression looking for closing '`' following 'e' expression code";
+        }
+
+        if((error = String_sliceCString(s, &s[len], &expr.sourcePath)) != 0) {
+    
+            //TODO: Clean up everything
+            return error;
+        }
+
+        s = &s[len];
+
+        if((error = Template_compile(config, s, &expr.template)) != 0) {
+
+            //TODO: Clean up everything
+            return error;
+        }
+
+        if(*s != '`') {
+
+            //TODO: Clean up everything
+            return "Expected closing '`' following 'e' template expression body";
+        }
+    }
+
+    //Conditional format:
+    //c`first | !first | <attribute_path> | !<attribute_path>`text_expr`
+    //Conditions:
+    //    first - true when this is either a standalone node or the first in an iteration
+    //    !first - true when this is not the first node in an iteration
+    //    attribute_path - the attribute is navigated to and assumed to be a boolean value
+    //    !attribute_path - same as above, but inverts the value of the attribute
+    //Value:
+    //    text_expr: an embedded template which will be recursively compiled and placed in
+    //               the expression's template field
+    if(expr.typeCode == 'c') {
+
+        int len = 0;
+        
+        if(*s != '`') {
+
+            //TODO: Clean up everything
+            return "Expected a '`' following 'c' template expression code";
+        }
+
+        for(len = 0; &s[len] != end_pos; len++) if(s[len] == '`') break;
+
+        if(&s[len] == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression looking for closing '`' following 'c' expression code";
+        }
+
+        if(*s == '!') {
+
+            expr.typeCode = 'n';
+            s++;
+    
+            if(s == &s[len - 1]) {
+
+                //TODO: Clean up everything
+                return "No condition following '!' in 'c' template expression conditional";
+            }
+        }
+
+        if((error = String_sliceCString(s, &s[len], &expr.sourcePath)) != 0) {
+    
+            //TODO: Clean up everything
+            return error;
+        }
+
+        s = &s[len];
+
+        if((error = Template_compile(config, s, &expr.template)) != 0) {
+
+            //TODO: Clean up everything
+            return error;
+        }
+
+        if(*s != '`') {
+
+            //TODO: Clean up everything
+            return "Expected closing '`' following 'c' template expression body";
+        }
+    }
+    
+    //Template Format
+    //t`<template_name>`
+    if(typeCode == 't') {
+ 
+        int len = 0;
+        
+        if(*s != '`') {
+
+            //TODO: Clean up everything
+            return "Expected a '`' following 't' template expression code";
+        }
+
+        for(len = 0; &s[len] != end_pos; len++) if(s[len] == '`') break;
+
+        if(&s[len] == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression looking for closing '`' following 't' expression code";
+        }
+
+        if((error = String_sliceCString(s, &s[len], &expr.sourcePath)) != 0) {
+    
+            //TODO: Clean up everything
+            return error;
+        }
+
+        s = &s[len];
+
+        if((error = Template_getCompiled(config, expr.sourcePath, &expr.template)) != 0) {
+
+            //TODO: Clean up everything
+            return error;
+        }
+    }
+
+    //Integer Format
+    //i<attribute_path>
+    //
+    //String format
+    //s<attribute_path>
+    //    
+    //    attribute_path - path to attribute which will be assumed to be an integer and inserted
+    if(typeCode == 'i' || typeCode == 's') {
+
+        if((error = String_sliceCString(s, end_pos, &expr.sourcePath)) != 0) {
+
+            //TODO: Clean up everything
+        }
+    }
+
+    if((*out_expr = (TemplateExpression*)malloc(sizeof(TemplateExpression))) == 0) {
+
+        //TODO: Clean up everything
+        return "Failed to allocate memory for a template expression";
+    }
+
+    (**out_expr) = expr;
+
+    return 0;
+}
+
+char* Template_compile(TemplateConfig* config,  char* template_str, Template** template) {
+
+    char* error;
+
+    *template = (Template*)malloc(sizeof(Template));
+
+    if(*template == 0) return "Failed to allocate memory for a template";
+    
+    if((error = VoidList_init(&(*template)->segments)) != 0) {
+
+        free(*template);
+        
+        return error;
+    }
+
+    if((error = VoidList_init(&(*template)->expressions)) != 0) {
+        
+        free(*template);
+        
+        return error;
+    }
+
+    if((error = VoidList_init(&(*template)->subTemplates)) != 0) {
+
+        free(*template);
+        
+        return error;
+    }
+
+    int state = 0;
+    char* end_pos = template_str;
+    char* start_pos = template_str;
+    String* segment
+
+    //TODO: We need to figure out a good mechanism for escaping special template chars
+    for(; *template_str != 0 && *template_str != '`'; template_str++) {
+
+        switch(state) {
+
+            //Looking for the start of an expression node
+            case 0:
+                if(*template_str == '{') {
+                    state = 1;
+                } else {
+                    end_pos = template_str;
+                }
+                break;
+
+            //Looking for the second brace in an expression node
+            case 1:
+                if(*template_str == '{') {
+
+                    if((error = String_sliceCString(start_pos, end_pos + 1, &segment)) != 0) {
+                        
+                        //TODO: Clean up everything
+                        return error;
+                    }
+
+                    VoidList_add(&(*template)->segments, segment);
+
+                    start_pos = template_str + 1;
+                    end_pos = start_pos;
+
+                    state = 2;
+                } else {
+
+                    end_pos = template_str;
+                    state = 0;
+                }
+                break;
+
+            //Looking for the closing brace in an expression node
+            case 2:
+                if(*template_str == '}') {
+                    state = 3;
+                } else {
+                    end_pos = template_str;
+                }
+                break;
+
+            case 3:
+                if(*template_str == '}') {
+
+                    TemplateExpression* expr;
+
+                    if((error = TemplateExpression_tryParse(start_pos, end_pos + 1, &expr)) != 0) {
+                        
+                        //TODO: Clean up everything
+                        return error;
+                    }
+
+                    VoidList_add(&(*template)->expresions, expr);
+                    start_pos = template_str + 1;
+                    end_pos = start_pos;
+                } else {
+
+                    end_pos = template_str;
+                }
+
+                state = 0;
+
+                break;
+        }
+    }   
+
+    if(state == 0)  {
+
+        if((error = String_sliceCString(start_pos, end_pos + 1, &segment)) != 0) {
+            
+            //TODO: Clean up everything
+            return error;
+        }
+
+        VoidList_add(&(*template)->segments, segment);
+    } else {
+        
+        //TODO: Clean up everything
+        return "Template ended in the middle of a template expression"
+    }
+
+    return 0;
+}
+
+char* Template_getCompiled(TemplateConfig* config, String* template_name, Template** out_template) {
 
     char* error;
     TemplateInfo* template_info;
@@ -490,129 +834,6 @@ char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out
     if((error = Template_renderCompiled(config, template, node)) != 0) return error;
 
     return 0;
-}
-
-typedef enum {
-    ChildIndex,
-    TemplateCondition
-} TemplateExpressionSubtype;
-
-typedef struct Template_s {
-    VoidList segments;
-    VoidList expressions;
-} Template;
-
-typedef struct TemplateExpression_s {
-    char typeCode;
-    TemplateExpresionSubtype subType;
-    int expressionCode;
-    struct TemplateExpression_s* subTemplate;
-} TemplateExpression;
-
-char* Template_compile(const char* template_str, Template** template) {
-
-    char* error;
-
-    *template = (Template*)malloc(sizeof(Template));
-
-    if(*template == 0) return "Failed to allocate memory for a template";
-    
-    if((error = VoidList_init(&(*template)->segments)) != 0) {
-
-        free(*template);
-        
-        return error;
-    }
-
-    if((error = VoidList_init(&(*template)->expressions)) != 0) {
-        
-        free(*template);
-        
-        return error;
-    }
-
-    if((error = VoidList_init(&(*template)->subTemplates)) != 0) {
-
-        free(*template);
-        
-        return error;
-    }
-
-    int state = 0;
-    char* end_pos = template_str;
-    char* start_pos = template_str;
-
-    for(; *template_str != 0; template_str++) {
-
-        switch(state) {
-
-            //Looking for the start of an expression node
-            case 0:
-                if(*template_str == '{') {
-                    state = 1;
-                } else {
-                    end_pos = template_str;
-                }
-                break;
-
-            //Looking for the second brace in an expression node
-            case 1:
-                if(*template_str == '{') {
-
-                    String* segment
-
-                    if((error = String_sliceCString(start_pos, end_pos, &segment)) != 0) {
-                        
-                        //TODO: Clean up everything
-                        return error;
-                    }
-
-                    VoidList_add(&(*template)->segments, segment);
-                    start_pos = template_str + 1;
-                    end_pos = start_pos;
-
-                    state = 2;
-                } else {
-
-                    end_pos = template_str;
-                    state = 0;
-                }
-                break;
-
-            //Looking for the closing brace in an expression node
-            case 2:
-                if(*template_str == '}') {
-                    state = 3;
-                } else {
-                    end_pos = template_str;
-                }
-                break;
-
-            case 3:
-                if(*template_str == '}') {
-
-                    TemplateExpression* expr;
-
-                    if((error = TemplateExpression_tryParse(start_pos, end_pos, &expr)) != 0) {
-                        
-                        //TODO: Clean up everything
-                        return error;
-                    }
-
-                    VoidList_add(&(*template)->expresions, expr);
-                    start_pos = template_str + 1;
-                    end_pos = start_pos;
-                } else {
-
-                    end_pos = template_str;
-                }
-
-                state = 0;
-
-                break;
-
-        }
-    }   
 }
 
 char* Lambda_generateCType(ASTNode* node, int lambda_id, String** out_str) {
