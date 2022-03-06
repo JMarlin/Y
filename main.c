@@ -532,13 +532,7 @@ char* TemplateExpression_tryParse(
     if(expr.typeCode == 'e') {
         
         int len = 0;
-        
-        if(*s != '`') {
-
-            //TODO: Clean up everything
-            return "Expected a '`' following 'e' template expression code";
-        }
-
+       
         for(len = 0; &s[len] != end_pos; len++) if(s[len] == '`') break;
 
         if(&s[len] == end_pos) {
@@ -553,7 +547,13 @@ char* TemplateExpression_tryParse(
             return error;
         }
 
-        s = &s[len];
+        s = &s[len + 1];
+
+        if(s == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression beginning template body of 'e' expression";
+        }
 
         if((error = Template_compile(config, s, &expr.template)) != 0) {
 
@@ -561,6 +561,8 @@ char* TemplateExpression_tryParse(
             return error;
         }
 
+        //TODO: This doesn't make any sene, we have to get the number of characters advanced
+        //      by Template_compile and only THEN can we proceed to check what this char is 
         if(*s != '`') {
 
             //TODO: Clean up everything
