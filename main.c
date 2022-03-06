@@ -453,7 +453,7 @@ TemplateConfig CTemplateConfig = {
         },
         {
             "param_type_list",
-            "({{r`t`param_type``}})", 0
+            "({{e`t`param_type``}})", 0
         },
         {
             "param_type",
@@ -727,7 +727,7 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
     String* segment;
 
     //TODO: We need to figure out a good mechanism for escaping special template chars
-    for(; *template_str != 0 && *template_str != '`'; template_str++) {
+    for(; *template_str != 0 && state >= 0; template_str++) {
 
         switch(state) {
 
@@ -735,6 +735,8 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
             case 0:
                 if(*template_str == '{') {
                     state = 1;
+                } else if(*template_str == '`') {
+                    state = -1;
                 } else {
                     end_pos = template_str;
                 }
@@ -797,7 +799,7 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
         }
     }   
 
-    if(state == 0)  {
+    if(state == 0 || state == -1)  {
 
         if((error = String_sliceCString(start_pos, end_pos + 1, &segment)) != 0) {
             
