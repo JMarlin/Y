@@ -820,6 +820,52 @@ char* Template_getCompiled(TemplateConfig* config, String* template_name, Templa
     return 0;
 }
 
+char* Template_printInner(Template* template, int depth) {
+
+    for(int i = 0; i < template->segments.count; i++) {
+
+        String* segment = (String*)template->segments.data[i];
+    
+        print_indent(depth); printf(
+            "Segment[%i] '%.*s'\n",
+            i, 
+            segment->length,
+            segment->data
+        );
+
+        if(i == template->expressions.count) continue;
+
+        TemplateExpression* expression = (TemplateExpression*)template->expressions.data[i];
+
+        print_indent(depth); printf(
+            "Expression[%i]\n"
+            "    typeCode: '%c'\n"
+            "    sourcePath: '%.s'\n"
+            "    template: %s\n",
+            i,
+            expression->typeCode,
+            expression->sourcePath->length, expression->sourcePath->data,
+            expression->template == 0 ? "[none]" : ""
+        );
+
+        if(expression->template == 0) continue;
+
+        if((error = Template_printInner(expression->template) != 0) return error;
+    }
+
+    return 0;
+}
+
+char* Template_print(Template* template) {
+
+    return Template_printInner(template, 0);
+}
+
+char* Template_renderCompiled(Template* template, ASTNode* node) {
+
+    return Template_print(Template* template);
+}
+
 char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out_string) {
 
     char* error;
@@ -831,69 +877,12 @@ char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out
         &template)) != 0
     ) return error;
 
-    if((error = Template_renderCompiled(config, template, node)) != 0) return error;
+    if((error = Template_renderCompiled(template, node)) != 0) return error;
 
     return 0;
 }
 
-char* Lambda_generateCType(ASTNode* node, int lambda_id, String** out_str) {
-
-    char* error = 0;
-
-    *out_str = String_new("typedef int (*Lambda");
-
-    if(*out_str == 0) {
-
-        return "Unable to allocate a string for lambda declaration write-out";
-    }
-
-    char num_buf[50] = {0};
-
-    sprintf(num_buf, "%i", lambda_id);
-
-    if((error = String_appendCString(*out_str, num_buf)) != 0) {
-
-        String_cleanUp(*out_str);
-
-        return error;
-    }
-
-    if((error = String_appendCString(*out_str, "Type)(")) != 0) {
-
-        String_cleanUp(*out_str);
-
-        return error;
-    }
-
-    for(int i = 0; i < node->LN_PARAMS->childCount; i++) {
-
-        char* param_str = i == 0 ? "int" : ", int";
-
-        if((error = String_appendCString(*out_str, param_str)) != 0) {
-
-            String_cleanUp(*out_str);
-
-            return error;
-        }   
-    }
-
-    if((error = String_appendCString(*out_str, ");\n")) != 0) {
-
-        String_cleanUp(*out_str);
-
-        return error;
-    }
-
-    return 0;
-}
-
-char* ASTNode_writeOut(FILE* out_file, ASTNode* node) {
-    /* TODO: Generate C from AST */
-    //- Rip through AST for all lambdas, create the unique list of lambda method types, 
-    //  then write declarations of lambda method types and write definitions of lambda
-    //  functions. Also attach a reference to the underlying C function pointer type
-    //  to the respective lambda node so that we can later use that information to
-    //  apply the function pointer type to any variables that get assigned to this lambda
+char* ASTNode_writeOut(FILE* out_file, TemplateConfig* config, ASTNode* node) {
 
     printf(
         "============================================\n"
@@ -921,21 +910,7 @@ char* ASTNode_writeOut(FILE* out_file, ASTNode* node) {
 
         String* code_str;
 
-        error = Lambda_generateCType(lambdas.data[i], i, &code_str);
-
-        if(error != 0) {
-
-            VoidList_cleanUp(&lambdas);
-
-            return error;
-        }
-
-        printf("%.*s", code_str->length, code_str->data);
-        fprintf(out_file, "%.*s", code_str->length, code_str->data);
-
-        String_cleanUp(code_str);
-
-        error = Lambda_generateCBody(lambdas.data[i], i, &code_str);
+        error = ASTNode_renderTemplate(lambdas.data[i], config, &code_str);
 
         if(error != 0) {
 
@@ -946,6 +921,8 @@ char* ASTNode_writeOut(FILE* out_file, ASTNode* node) {
  
         printf("%.*s", code_str->length, code_str->data);
         fprintf(out_file, "%.*s", code_str->length, code_str->data);
+
+        String_cleanUp(code_str);
     }
 
     return 0;
@@ -1666,7 +1643,7 @@ int main(int argc, char* argv[]) {
     //TODO: Actually parse command line args as described
     FILE* out_file = fopen(argv[2], "w");
 
-    ASTNode_writeOut(out_file, module_ast);
+    ASTNode_writeOut(out_file, &CTemplateConfig, module_ast);
 
     fclose(out_file);
 
