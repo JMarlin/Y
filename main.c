@@ -453,7 +453,7 @@ TemplateConfig CTemplateConfig = {
         },
         {
             "param_type_list",
-            "({{e`t`param_type``}})", 0
+            "({{e`{{t`param_type`}}`}})", 0
         },
         {
             "param_type",
@@ -495,12 +495,13 @@ char* cstr_skip_whitespace(char** s, char* end, int expect_more) {
     return expect_more ? "Hit the end of a cstr while skipping whitespace" : 0;
 }
 
-char* Template_compile(TemplateConfig* config,  char* template_str, Template** template);
+char* Template_compile(TemplateConfig* config,  char** template_strp, Template** template);
 char* Template_getCompiled(TemplateConfig* config, String* template_name, Template** out_template);
 
 char* TemplateExpression_tryParse(
-    TemplateConfig* config, char* s, char* end_pos, TemplateExpression** out_expr) {
+    TemplateConfig* config, char** sp, char* end_pos, TemplateExpression** out_expr) {
 
+    char* s = *sp;
     char* error;
     TemplateExpression expr = {0};
 
@@ -555,7 +556,7 @@ char* TemplateExpression_tryParse(
             return "Hit end of expression beginning template body of 'e' expression";
         }
 
-        if((error = Template_compile(config, s, &expr.template)) != 0) {
+        if((error = Template_compile(config, &s, &expr.template)) != 0) {
 
             //TODO: Clean up everything
             return error;
@@ -618,7 +619,7 @@ char* TemplateExpression_tryParse(
 
         s = &s[len];
 
-        if((error = Template_compile(config, s, &expr.template)) != 0) {
+        if((error = Template_compile(config, &s, &expr.template)) != 0) {
 
             //TODO: Clean up everything
             return error;
@@ -708,12 +709,14 @@ char* TemplateExpression_tryParse(
     }
 
     (**out_expr) = expr;
+    *sp = s;
 
     return 0;
 }
 
-char* Template_compile(TemplateConfig* config,  char* template_str, Template** template) {
+char* Template_compile(TemplateConfig* config,  char** template_strp, Template** template) {
 
+    char* template_str = *template_strp;
     char* error;
 
     *template = (Template*)malloc(sizeof(Template));
@@ -738,6 +741,7 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
                 if(*template_str == '{') {
                     state = 1;
                 } else if(*template_str == '`') {
+                    template_str--;
                     state = -1;
                 } else {
                     end_pos = template_str;
@@ -781,7 +785,7 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
 
                     TemplateExpression* expr;
 
-                    if((error = TemplateExpression_tryParse(config, start_pos, end_pos + 1, &expr)) != 0) {
+                    if((error = TemplateExpression_tryParse(config, &start_pos, end_pos + 1, &expr)) != 0) {
                         
                         //TODO: Clean up everything
                         return error;
@@ -816,6 +820,8 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
         return "Template ended in the middle of a template expression";
     }
 
+    *template_strp = template_str;
+
     return 0;
 }
 
@@ -826,11 +832,13 @@ char* Template_getCompiled(TemplateConfig* config, String* template_name, Templa
 
     if((error = TemplateConfig_lookUp(config, template_name, &template_info)) != 0) return error;
 
+    char* template_str = template_info->template;
+
     if(
         (template_info->compiledTemplate == 0) &&
         ((error = Template_compile(
             config,
-            template_info->template,
+            &template_str,
             &template_info->compiledTemplate)) != 0) ) return error;
     
     *out_template = template_info->compiledTemplate;
