@@ -441,9 +441,13 @@ typedef struct TemplateConfig_s {
 
 TemplateConfig CTemplateConfig = {
     {
-        //TODO
-        //EG, for Lambda
-        "lambda_declarations"
+    "", //Module
+    "", //Declaration
+    "", //Parameter
+    "", //ParameterList
+    "", //Operator
+    "lambda_declarations", //Lambda
+    "" //Symbol
     },
     3, 
     {
@@ -457,7 +461,7 @@ TemplateConfig CTemplateConfig = {
         },
         {
             "param_type",
-            "{{b`!first` ,`}}int", 0
+            "{{c`!first` ,`}}int", 0
         }
     }
 };
@@ -468,10 +472,13 @@ char* TemplateConfig_lookUp(TemplateConfig* config, String* template_name, Templ
 
     for(int i = 0; i < config->templateCount; i++) {
 
-        if(strncmp(
-            config->templateList[i].templateName,
-            template_name->data,
-            template_name->length) == 0) {
+        if(
+            strlen(config->templateList[i].templateName)
+                == template_name->length &&
+            (strncmp(
+                config->templateList[i].templateName,
+                template_name->data,
+                template_name->length) == 0)) {
 
             *template_info = &config->templateList[i];
             
@@ -569,6 +576,8 @@ char* TemplateExpression_tryParse(
             //TODO: Clean up everything
             return "Expected closing '`' following 'e' template expression body";
         }
+
+        s++;
     }
 
     //Conditional format:
@@ -599,16 +608,32 @@ char* TemplateExpression_tryParse(
             return "Hit end of expression looking for closing '`' following 'c' expression code";
         }
 
+        s = &s[len + 1];
+
+        if(s == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression looking for closing '`' following 'c' expression code";
+        }
+
         if(*s == '!') {
 
             expr.typeCode = 'n';
             s++;
     
-            if(s == &s[len - 1]) {
+            if(s == end_pos) {
 
                 //TODO: Clean up everything
                 return "No condition following '!' in 'c' template expression conditional";
             }
+        }
+
+        for(len = 0; &s[len] != end_pos; len++) if(s[len] == '`') break;
+
+        if(&s[len] == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression looking for closing '`' following 'c' expression code";
         }
 
         if((error = String_sliceCString(s, &s[len], &expr.sourcePath)) != 0) {
@@ -752,7 +777,7 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
             case 1:
                 if(*template_str == '{') {
 
-                    if((error = String_sliceCString(start_pos, end_pos + 1, &segment)) != 0) {
+                    if((error = String_sliceCString(start_pos, end_pos, &segment)) != 0) {
                         
                         //TODO: Clean up everything
                         return error;
@@ -807,7 +832,7 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
 
     if(state == 0 || state == -1)  {
 
-        if((error = String_sliceCString(start_pos, end_pos + 1, &segment)) != 0) {
+        if((error = String_sliceCString(start_pos, end_pos, &segment)) != 0) {
             
             //TODO: Clean up everything
             return error;
@@ -865,20 +890,16 @@ char* Template_printInner(Template* template, int depth) {
 
         TemplateExpression* expression = (TemplateExpression*)template->expressions.data[i];
 
-        print_indent(depth); printf(
-            "Expression[%i]\n"
-            "    typeCode: '%c'\n"
-            "    sourcePath: '%.*s'\n"
-            "    template: %s\n",
-            i,
-            expression->typeCode,
-            expression->sourcePath->length, expression->sourcePath->data,
-            expression->template == 0 ? "[none]" : ""
-        );
+        print_indent(depth); printf("Expression[%i]\n", i);
+        print_indent(depth); printf("    typeCode: '%c'\n", expression->typeCode);
+        print_indent(depth); printf("    sourcePath: '%.*s'\n",
+            expression->sourcePath->length, expression->sourcePath->data);
+        print_indent(depth); printf("    template: %s\n",
+            expression->template == 0 ? "[none]" : "");
 
         if(expression->template == 0) continue;
 
-        if((error = Template_printInner(expression->template, depth + 1)) != 0) return error;
+        if((error = Template_printInner(expression->template, depth + 2)) != 0) return error;
     }
 
     return 0;
