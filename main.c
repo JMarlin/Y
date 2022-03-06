@@ -90,6 +90,14 @@ void VoidList_cleanUp(VoidList* vlist) {
     if(vlist->capacity > 0) free(vlist->data);
 }
 
+void print_indent(int depth) {
+    
+    for(int i = 0; i < depth; i++) {
+    
+        printf("    ");
+    }
+}
+
 typedef void (*ASTNodePrinter)(ASTNode*, int);
 typedef void (*ASTNodeCleaner)(ASTNode*);
 typedef int (*ASTNodePredicate)(ASTNode*);
@@ -220,7 +228,7 @@ char* String_sliceCString(char* start, char* end, String** string) {
     if(*string == 0) return "Failed to allocate space for a new sliced string";
 
     (*string)->capacity = 0;
-    (*string)->length = (int)end - (int)start;
+    (*string)->length = (size_t)end - (size_t)start;
     (*string)->data = start;
 
     return 0;
@@ -420,35 +428,36 @@ typedef struct Template_s {
 } Template;
 
 typedef struct TemplateInfo_s {
-    const char* templateName;
-    const char* template;
+    char* templateName;
+    char* template;
     Template* compiledTemplate;
 } TemplateInfo;
 
 typedef struct TemplateConfig_s {
-    const char* baseTemplateName[ASTNodeTypeCount];
+    char* baseTemplateName[ASTNodeTypeCount];
     int templateCount;
     TemplateInfo templateList[];
 } TemplateConfig;
 
 TemplateConfig CTemplateConfig = {
-    (const char(*)[]){
+    {
         //TODO
         //EG, for Lambda
         "lambda_declarations"
     },
-    (TemplateInfo[]){
-        (TemplateInfo){
+    3, 
+    {
+        {
             "lambda_declarations",
-            "typedef int (*Lambda{{ia0}}Type){{t(param_type_list)c0}};", 0
+            "typedef int (*Lambda{{ia0}}Type){{tc0`param_type_list`}};", 0
         },
-        (TemplateInfo){
+        {
             "param_type_list",
-            "({{rt(param_type)}})", 0
+            "({{r`t`param_type``}})", 0
         },
-        (TemplateInfo)&{
+        {
             "param_type",
-            "{{b(!first)( ,)}}int", 0
+            "{{b`!first` ,`}}int", 0
         }
     }
 };
@@ -486,6 +495,9 @@ char* cstr_skip_whitespace(char** s, char* end, int expect_more) {
     return expect_more ? "Hit the end of a cstr while skipping whitespace" : 0;
 }
 
+char* Template_compile(TemplateConfig* config,  char* template_str, Template** template);
+char* Template_getCompiled(TemplateConfig* config, String* template_name, Template** out_template);
+
 char* TemplateExpression_tryParse(
     TemplateConfig* config, char* s, char* end_pos, TemplateExpression** out_expr) {
 
@@ -517,7 +529,7 @@ char* TemplateExpression_tryParse(
     //                if the path does not end in an 's', the inner template is expanded for each
     //                child in the terminal node
     //    text_expr:  embedded template that will be compiled and inserted into the compiled expression
-    if(typeCode == 'e') {
+    if(expr.typeCode == 'e') {
         
         int len = 0;
         
@@ -618,15 +630,31 @@ char* TemplateExpression_tryParse(
     }
     
     //Template Format
-    //t`<template_name>`
-    if(typeCode == 't') {
+    //t<source_path>`<template_name>`
+    if(expr.typeCode == 't') {
  
         int len = 0;
-        
-        if(*s != '`') {
+
+        for(len = 0; &s[len] != end_pos; len++) if(s[len] == '`') break;
+
+        if(&s[len] == end_pos) {
 
             //TODO: Clean up everything
-            return "Expected a '`' following 't' template expression code";
+            return "Hit end of expression looking for opening '`' following 't' expression code";
+        }
+
+        if((error = String_sliceCString(s, &s[len], &expr.sourcePath)) != 0) {
+    
+            //TODO: Clean up everything
+            return error;
+        }
+   
+        s = &s[len + 1]; 
+
+        if(&s[len] == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression at beginning of template name in 't' expression code";
         }
 
         for(len = 0; &s[len] != end_pos; len++) if(s[len] == '`') break;
@@ -637,7 +665,9 @@ char* TemplateExpression_tryParse(
             return "Hit end of expression looking for closing '`' following 't' expression code";
         }
 
-        if((error = String_sliceCString(s, &s[len], &expr.sourcePath)) != 0) {
+        String* template_name;
+
+        if((error = String_sliceCString(s, &s[len], &template_name)) != 0) {
     
             //TODO: Clean up everything
             return error;
@@ -645,11 +675,13 @@ char* TemplateExpression_tryParse(
 
         s = &s[len];
 
-        if((error = Template_getCompiled(config, expr.sourcePath, &expr.template)) != 0) {
+        error = Template_getCompiled(config, template_name, &expr.template);
 
-            //TODO: Clean up everything
-            return error;
-        }
+        String_cleanUp(template_name);
+
+        //TODO: Clean up everything
+        
+        if(error != 0) return error;
     }
 
     //Integer Format
@@ -659,7 +691,7 @@ char* TemplateExpression_tryParse(
     //s<attribute_path>
     //    
     //    attribute_path - path to attribute which will be assumed to be an integer and inserted
-    if(typeCode == 'i' || typeCode == 's') {
+    if(expr.typeCode == 'i' || expr.typeCode == 's') {
 
         if((error = String_sliceCString(s, end_pos, &expr.sourcePath)) != 0) {
 
@@ -686,31 +718,13 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
 
     if(*template == 0) return "Failed to allocate memory for a template";
     
-    if((error = VoidList_init(&(*template)->segments)) != 0) {
-
-        free(*template);
-        
-        return error;
-    }
-
-    if((error = VoidList_init(&(*template)->expressions)) != 0) {
-        
-        free(*template);
-        
-        return error;
-    }
-
-    if((error = VoidList_init(&(*template)->subTemplates)) != 0) {
-
-        free(*template);
-        
-        return error;
-    }
+    VoidList_init(&(*template)->segments);
+    VoidList_init(&(*template)->expressions);
 
     int state = 0;
     char* end_pos = template_str;
     char* start_pos = template_str;
-    String* segment
+    String* segment;
 
     //TODO: We need to figure out a good mechanism for escaping special template chars
     for(; *template_str != 0 && *template_str != '`'; template_str++) {
@@ -763,13 +777,13 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
 
                     TemplateExpression* expr;
 
-                    if((error = TemplateExpression_tryParse(start_pos, end_pos + 1, &expr)) != 0) {
+                    if((error = TemplateExpression_tryParse(config, start_pos, end_pos + 1, &expr)) != 0) {
                         
                         //TODO: Clean up everything
                         return error;
                     }
 
-                    VoidList_add(&(*template)->expresions, expr);
+                    VoidList_add(&(*template)->expressions, expr);
                     start_pos = template_str + 1;
                     end_pos = start_pos;
                 } else {
@@ -795,7 +809,7 @@ char* Template_compile(TemplateConfig* config,  char* template_str, Template** t
     } else {
         
         //TODO: Clean up everything
-        return "Template ended in the middle of a template expression"
+        return "Template ended in the middle of a template expression";
     }
 
     return 0;
@@ -822,6 +836,8 @@ char* Template_getCompiled(TemplateConfig* config, String* template_name, Templa
 
 char* Template_printInner(Template* template, int depth) {
 
+    char* error;
+
     for(int i = 0; i < template->segments.count; i++) {
 
         String* segment = (String*)template->segments.data[i];
@@ -840,7 +856,7 @@ char* Template_printInner(Template* template, int depth) {
         print_indent(depth); printf(
             "Expression[%i]\n"
             "    typeCode: '%c'\n"
-            "    sourcePath: '%.s'\n"
+            "    sourcePath: '%.*s'\n"
             "    template: %s\n",
             i,
             expression->typeCode,
@@ -850,7 +866,7 @@ char* Template_printInner(Template* template, int depth) {
 
         if(expression->template == 0) continue;
 
-        if((error = Template_printInner(expression->template) != 0) return error;
+        if((error = Template_printInner(expression->template, depth + 1)) != 0) return error;
     }
 
     return 0;
@@ -863,19 +879,25 @@ char* Template_print(Template* template) {
 
 char* Template_renderCompiled(Template* template, ASTNode* node) {
 
-    return Template_print(Template* template);
+    return Template_print(template);
 }
 
 char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out_string) {
 
     char* error;
     Template* template;
+    String* template_name;
 
-    if((error = Template_getCompiled(
-        config,
-        config->baseTemplateName[node->type],
-        &template)) != 0
-    ) return error;
+    if((template_name = String_new(config->baseTemplateName[node->type])) == 0) {
+        
+        return "Unable to allocate string for template name lookup";
+    }
+
+    error = Template_getCompiled(config, template_name, &template);
+
+    String_cleanUp(template_name);
+
+    if(error != 0) return error;
 
     if((error = Template_renderCompiled(template, node)) != 0) return error;
 
@@ -931,14 +953,6 @@ char* ASTNode_writeOut(FILE* out_file, TemplateConfig* config, ASTNode* node) {
 }
 
 char* Expression_tryParse(FILE* in_file, ASTNode** node);
-
-void print_indent(int depth) {
-    
-    for(int i = 0; i < depth; i++) {
-    
-        printf("    ");
-    }
-}
 
 void ASTModuleNode_print(ASTNode* node, int depth) {
 
@@ -1643,7 +1657,9 @@ int main(int argc, char* argv[]) {
     //TODO: Actually parse command line args as described
     FILE* out_file = fopen(argv[2], "w");
 
-    ASTNode_writeOut(out_file, &CTemplateConfig, module_ast);
+    error_message = ASTNode_writeOut(out_file, &CTemplateConfig, module_ast);
+
+    printf("Writing out failed: %s\n", error_message);
 
     fclose(out_file);
 
