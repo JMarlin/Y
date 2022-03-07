@@ -473,7 +473,7 @@ TemplateConfig CTemplateConfig = {
     {
         {
             "lambda_declarations",
-            "typedef int (*Lambda{{ia0}}Type){{tc0`param_type_list`}};", 0
+            "typedef int (*Lambda{{ia0}}Type){{tc0`param_type_list`}};\n", 0
         },
         {
             "param_type_list",
@@ -481,7 +481,7 @@ TemplateConfig CTemplateConfig = {
         },
         {
             "param_type",
-            "{{c`!first` ,`}}int", 0
+            "{{c`!first`, `}}int", 0
         }
     }
 };
@@ -755,6 +755,8 @@ char* TemplateExpression_tryParse(
 
             //TODO: Clean up everything
         }
+
+        s = end_pos;
     }
 
     if((*out_expr = (TemplateExpression*)malloc(sizeof(TemplateExpression))) == 0) {
@@ -845,7 +847,9 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
                     }
 
                     VoidList_add(&(*template)->expressions, expr);
-                    start_pos = end_pos;
+                    start_pos += 2;
+                    end_pos = start_pos;
+                    template_str = start_pos - 1;
                 } 
 
                 state = 0;
@@ -1034,8 +1038,12 @@ char* IntegerTemplateExpression_render(
     }
 
     size_t attribute_val = (size_t)attribute_ptr;
+    char num_buf[50] = {0};
 
-    printf("%li", attribute_val);
+    sprintf(num_buf, "%li", attribute_val);
+    String* num_str = String_new(num_buf);
+    String_append(*out_str, num_str);
+    String_cleanUp(num_str);
 
     return 0;
 }
@@ -1161,7 +1169,7 @@ char* Template_renderCompiledInner(Template* template, ASTNode* node, String** o
 
         String* segment = (String*)template->segments.data[i];
     
-        printf("%.*s", segment->length, segment->data);
+        String_append(*out_str, segment);
 
         if(i == template->expressions.count) continue;
 
@@ -1212,9 +1220,6 @@ char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out
 
     if(error != 0) return error;
 
-    //TEMP
-    Template_print(template);
-
     if((error = Template_renderCompiled(template, node, out_string)) != 0) return error;
 
     return 0;
@@ -1222,14 +1227,7 @@ char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out
 
 char* ASTNode_writeOut(FILE* out_file, TemplateConfig* config, ASTNode* node) {
 
-    printf(
-        "============================================\n"
-        " Generating C source\n"
-        "============================================\n" );
-
     VoidList lambdas;
-
-    printf("Looking for lambdas...\n");
 
     char* error = ASTTree_findAll(node, ASTNode_IsLambda, &lambdas);
 
@@ -1240,11 +1238,7 @@ char* ASTNode_writeOut(FILE* out_file, TemplateConfig* config, ASTNode* node) {
         VoidList_cleanUp(&lambdas);
     }
 
-    printf("Found %i lambdas\n", lambdas.count);
-
     for(int i = 0; i < lambdas.count; i++) {
-
-        ASTNode_print(lambdas.data[i], 0);
 
         String* code_str;
 
@@ -1257,15 +1251,14 @@ char* ASTNode_writeOut(FILE* out_file, TemplateConfig* config, ASTNode* node) {
             return error;
         }
  
-        printf("%.*s", code_str->length, code_str->data);
         fprintf(out_file, "%.*s", code_str->length, code_str->data);
 
         String_cleanUp(code_str);
     }
 
-    return 0;
-
     VoidList_cleanUp(&lambdas);
+
+    return 0;
 }
 
 char* Expression_tryParse(FILE* in_file, ASTNode** node);
@@ -1971,14 +1964,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    ASTNode_print(module_ast, 0);
-
     //TODO: Actually parse command line args as described
     FILE* out_file = fopen(argv[2], "w");
 
     error_message = ASTNode_writeOut(out_file, &CTemplateConfig, module_ast);
 
-    printf("Writing out failed: %s\n", error_message);
+    if(error_message != 0)
+        printf("Writing out failed: %s\n", error_message);
 
     fclose(out_file);
 
