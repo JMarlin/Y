@@ -17,13 +17,16 @@ typedef enum {
 #define AN_COMMON_FIELDS \
     ASTNodeType type; \
     int childCount; \
-    struct ASTNode_s** children
+    struct ASTNode_s** children; \
+    int attributeCount; \
+    void** attributes;
 
 typedef struct ASTNode_s {
     AN_COMMON_FIELDS;
 } ASTNode;
 
-char* ASTNode_create(ASTNode** node, ASTNodeType type, int childCount, size_t nodeSize) {
+char* ASTNode_create(
+    ASTNode** node, ASTNodeType type, int childCount, int attributeCount, size_t nodeSize) {
 
     *node = (ASTNode*)malloc(nodeSize);
 
@@ -47,7 +50,24 @@ char* ASTNode_create(ASTNode** node, ASTNodeType type, int childCount, size_t no
         }
     }
 
+    if(attributeCount == 0) {
+    
+        (*node)->attributes = 0;
+    } else {
+
+        (*node)->attributes = (void**)malloc(sizeof(void*) * attributeCount);
+
+        if((*node)->attributes == 0) {
+
+            free((*node)->attributes);
+            free(*node);
+
+            return "Could not allocate space for AST node children";
+        }
+    }
+
     (*node)->childCount = childCount;
+    (*node)->attributeCount = attributeCount;
     (*node)->type = type;
 
     return 0;
@@ -915,9 +935,114 @@ char* Template_print(Template* template) {
     return Template_printInner(template, 0);
 }
 
-char* Template_renderCompiled(Template* template, ASTNode* node) {
+char* ASTNode_getAttributeByPath(String* path, void** attribute) {
 
-    return Template_print(template);
+    return "Get attribute by path not implemented yet";
+}
+
+char* TemplateExpression_render(
+    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index);
+
+char* IntegerTemplateExpression_render(
+    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+
+    char* error;
+    void* attribute_ptr;
+
+    if((error = ASTNode_getAttributeByPath(expression->sourcePath, &attribute_ptr)) != 0) return error;
+
+    size_t attribute_val = (size_t)attribute_ptr;
+
+    printf("%li", attribute_val);
+
+    return 0;
+}
+
+char* StringTemplateExpression_render(
+    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+
+    return "String template rendering not implemented";
+}
+
+char* ReferenceTemplateExpression_render(
+    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) { 
+
+    return "Reference template rendering not implemented";
+}
+
+char* ExpansionTemplateExpression_render(
+    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+
+    return "Expansion template rendering not implemented";
+}
+
+char* ConditionalTemplateExpression_render(
+    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+
+    return "Conditional template rendering not implemented";
+}
+
+char* TemplateExpression_render(
+    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+
+    if(expression->typeCode == 'i')
+        return IntegerTemplateExpression_render(expression, node, out_str, child_index);
+
+    if(expression->typeCode == 's')
+        return StringTemplateExpression_render(expression, node, out_str, child_index);
+
+    if(expression->typeCode == 't')
+        return ReferenceTemplateExpression_render(expression, node, out_str, child_index);
+
+    if(expression->typeCode == 'e')
+        return ExpansionTemplateExpression_render(expression, node, out_str, child_index);
+
+    if(expression->typeCode == 'c' || expression->typeCode == 'n')
+        return ConditionalTemplateExpression_render(expression, node, out_str, child_index);
+
+    return "Encountered an unknown expression type when rendering template";
+}
+
+char* Template_renderCompiledInner(Template* template, ASTNode* node, String** out_str, int child_index) {
+
+    char* error;
+
+    for(int i = 0; i < template->segments.count; i++) {
+
+        String* segment = (String*)template->segments.data[i];
+    
+        printf("%.*s", segment->length, segment->data);
+
+        if(i == template->expressions.count) continue;
+
+        TemplateExpression* expression = (TemplateExpression*)template->expressions.data[i];
+
+        if((error = TemplateExpression_render(
+            (TemplateExpression*)template->expressions.data[i],
+            node,
+            out_str,
+            child_index)) != 0) return error;
+    }
+
+    return 0;
+}
+
+char* Template_renderCompiled(Template* template, ASTNode* node, String** out_str) {
+
+    char* error;
+    
+    *out_str = String_new(0);
+
+    if(out_str == 0) return "Unable to allocate memory for template output string";
+
+    if((error = Template_renderCompiledInner(template, node, out_str, 0)) != 0) {
+
+        String_cleanUp(*out_str);
+
+        return error;
+    }
+
+    return 0;
 }
 
 char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out_string) {
@@ -937,7 +1062,7 @@ char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out
 
     if(error != 0) return error;
 
-    if((error = Template_renderCompiled(template, node)) != 0) return error;
+    if((error = Template_renderCompiled(template, node, out_string)) != 0) return error;
 
     return 0;
 }
@@ -1173,7 +1298,7 @@ char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
         break;
     }
 
-    error = ASTNode_create(node, Symbol, 0, sizeof(ASTSymbolNode));
+    error = ASTNode_create(node, Symbol, 0, 0, sizeof(ASTSymbolNode));
 
     if(*node == 0) {
 
@@ -1258,7 +1383,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
         return right_error;
     }
 
-    char* error = ASTNode_create(node, Operator, 2, sizeof(ASTOperatorNode));
+    char* error = ASTNode_create(node, Operator, 2, 0, sizeof(ASTOperatorNode));
 
     if(error != 0) {
 
@@ -1315,7 +1440,7 @@ char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
 
     if(error != 0) return error;
 
-    error = ASTNode_create(node, Parameter, 1, sizeof(ASTParameterNode));
+    error = ASTNode_create(node, Parameter, 1, 0, sizeof(ASTParameterNode));
 
     if(error != 0) {
     
@@ -1415,7 +1540,7 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
         return "Expected a closing parenthesis at the end of parameter list";
     }
 
-    error = ASTNode_create(node, ParameterList, 0, sizeof(ASTParameterListNode));
+    error = ASTNode_create(node, ParameterList, 0, 0, sizeof(ASTParameterListNode));
 
     if(error != 0) {
 
@@ -1491,7 +1616,7 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
         return expression_error;
     }
 
-    char* error = ASTNode_create(node, Lambda, 2, sizeof(ASTLambdaNode));
+    char* error = ASTNode_create(node, Lambda, 2, 0, sizeof(ASTLambdaNode));
 
     if(error != 0)  {
 
@@ -1593,7 +1718,7 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
         return "No semicolon following logical end of declaration statement";
     }
 
-    error = ASTNode_create(node, Declaration, 2, sizeof(ASTDeclarationNode));
+    error = ASTNode_create(node, Declaration, 2, 0, sizeof(ASTDeclarationNode));
 
     if(error != 0) {
     
@@ -1633,7 +1758,7 @@ char* Module_tryParse(FILE* in_file, ASTNode** node) {
     char* inner_error = 0;
     ASTNode* new_statement;
 
-    inner_error = ASTNode_create(node, Module, 0, sizeof(ASTModuleNode));
+    inner_error = ASTNode_create(node, Module, 0, 0, sizeof(ASTModuleNode));
 
     if(inner_error != 0) return "Unable to allocate memory for a module node";
 
