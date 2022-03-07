@@ -642,7 +642,13 @@ char* TemplateExpression_tryParse(
             return error;
         }
 
-        s = &s[len];
+        s = &s[len + 1];
+
+        if(s == end_pos) {
+
+            //TODO: Clean up everything
+            return "Hit end of expression looking for template body in 'c' expression code";
+        }
 
         if((error = Template_compile(config, &s, &expr.template)) != 0) {
 
@@ -655,6 +661,8 @@ char* TemplateExpression_tryParse(
             //TODO: Clean up everything
             return "Expected closing '`' following 'c' template expression body";
         }
+
+        s++;
     }
     
     //Template Format
@@ -710,6 +718,8 @@ char* TemplateExpression_tryParse(
         //TODO: Clean up everything
         
         if(error != 0) return error;
+
+        s++;
     }
 
     //Integer Format
@@ -768,16 +778,16 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
                 } else if(*template_str == '`') {
                     template_str--;
                     state = -1;
-                } else {
-                    end_pos = template_str;
                 }
                 break;
 
             //Looking for the second brace in an expression node
             case 1:
                 if(*template_str == '{') {
+                
+                    end_pos = template_str + 1;
 
-                    if((error = String_sliceCString(start_pos, end_pos, &segment)) != 0) {
+                    if((error = String_sliceCString(start_pos, end_pos - 2, &segment)) != 0) {
                         
                         //TODO: Clean up everything
                         return error;
@@ -785,13 +795,11 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
 
                     VoidList_add(&(*template)->segments, segment);
 
-                    start_pos = template_str + 1;
-                    end_pos = start_pos;
+                    start_pos = end_pos;
 
                     state = 2;
                 } else {
 
-                    end_pos = template_str;
                     state = 0;
                 }
                 break;
@@ -800,29 +808,26 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
             case 2:
                 if(*template_str == '}') {
                     state = 3;
-                } else {
-                    end_pos = template_str;
                 }
                 break;
 
             case 3:
                 if(*template_str == '}') {
 
+                    end_pos = template_str + 1;
+
                     TemplateExpression* expr;
 
-                    if((error = TemplateExpression_tryParse(config, &start_pos, end_pos + 1, &expr)) != 0) {
+                    if((error = TemplateExpression_tryParse(config, &start_pos, end_pos - 2, &expr)) != 0) {
                         
                         //TODO: Clean up everything
                         return error;
                     }
 
                     VoidList_add(&(*template)->expressions, expr);
-                    start_pos = template_str + 1;
+                    start_pos += 2;
                     end_pos = start_pos;
-                } else {
-
-                    end_pos = template_str;
-                }
+                } 
 
                 state = 0;
 
@@ -832,7 +837,7 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
 
     if(state == 0 || state == -1)  {
 
-        if((error = String_sliceCString(start_pos, end_pos, &segment)) != 0) {
+        if((error = String_sliceCString(start_pos, template_str, &segment)) != 0) {
             
             //TODO: Clean up everything
             return error;
