@@ -1069,13 +1069,67 @@ char* ReferenceTemplateExpression_render(
 char* ExpansionTemplateExpression_render(
     TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
 
-    return "Expansion template rendering not implemented";
+    char* error;
+    ASTNode* target_node;
+
+    if((error = ASTNode_getChildByPath(node, expression->sourcePath, 0, &target_node)) != 0) return error;
+
+    if(
+        expression->sourcePath->length > 0 &&
+        expression->sourcePath->data[expression->sourcePath->length - 1] == 'c'
+    ) {
+
+        if((error = Template_renderCompiledInner(expression->template, target_node, out_str, 0)) != 0) {
+
+            return error;
+        } else {
+
+            return 0;
+        }
+    }
+
+    for(int i = 0; i < target_node->childCount; i++) {
+
+         if((error = Template_renderCompiledInner(
+            expression->template, target_node->children[i], out_str, i)) != 0) {
+
+            return error;
+        }
+    }
+
+    return 0;
 }
 
 char* ConditionalTemplateExpression_render(
     TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
 
-    return "Conditional template rendering not implemented";
+    char* error;
+    void* attribute_ptr;
+
+    if(
+        expression->sourcePath->length == strlen("first") &&
+        strncmp(expression->sourcePath->data, "first", expression->sourcePath->length) == 0
+    ) {
+        if(
+            (expression->typeCode == 'c' && child_index != 0) ||
+            (expression->typeCode == 'n' && child_index == 0)
+        ) return 0;
+    } else {
+
+        if((error = ASTNode_getAttributeByPath(node, expression->sourcePath, &attribute_ptr)) != 0) {
+
+            return error;
+        }
+     
+        size_t attribute_val = (size_t)attribute_ptr;
+
+        if(
+            (expression->typeCode == 'c' && attribute_val == 0) ||
+            (expression->typeCode == 'n' && attribute_val != 0)
+        ) return 0;
+    }
+
+    return Template_renderCompiledInner(expression->template, node, out_str, child_index);
 }
 
 char* TemplateExpression_render(
