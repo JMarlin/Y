@@ -935,9 +935,87 @@ char* Template_print(Template* template) {
     return Template_printInner(template, 0);
 }
 
-char* ASTNode_getAttributeByPath(String* path, void** attribute) {
+char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str, ASTNode** out_node) {
 
-    return "Get attribute by path not implemented yet";
+    char* number_str;
+    char* error;
+    int i, j, child_idx;
+
+    *out_node = in_node;
+
+    if(path->length == 0) return 0;
+
+    for(i = 0; i < path->length;) {
+
+        if(path->data[i] != 'c') {
+
+            if(path->data[i] == 'a' && rest_str != 0) break;  
+
+            return "Expected node path segment to begin with a 'c'";
+        }
+
+        if(++i == path->length) break;
+
+        for(j = i; path->data[j] >= '0' && path->data[j] <= '9' && j < path->length; j++);
+
+        if(j == i) return "Expected index number following 'c' in node path segment";
+
+        number_str = strndup(&path->data[i], j - i);
+        child_idx = strtol(number_str, 0, 0);
+        free(number_str);
+
+        if(child_idx >= (*out_node)->childCount) {
+
+            return "Specified index in child path segment outside of child count";
+        }
+
+        *out_node = (*out_node)->children[child_idx];
+
+        i = j;
+    }
+
+    if(rest_str == 0) return 0;
+
+    if((error = String_sliceCString(&path->data[i], &path->data[path->length], rest_str)) != 0) {
+
+        return error;
+    }
+
+    return 0;
+}
+
+char* ASTNode_getAttributeByPath(ASTNode* node, String* path, void** attribute) {
+
+    char* error;
+    int attr_idx;
+    ASTNode* attr_node;
+    char* clone_str;
+    String* attr_path;
+
+    if((error = ASTNode_getChildByPath(node, path, &attr_path, &attr_node)) != 0) return error;
+
+    if(attr_path->length < 2) return "No attribute path at the end of node path";
+
+    if(attr_path->data[0] != 'a') return "Expected 'a' at beginning of attribute path";
+
+    clone_str = strndup(attr_path->data, attr_path->length);
+
+    String_cleanUp(attr_path);
+
+    if(clone_str == 0) return "Failed to allocate space for attribute index string";
+
+    attr_idx = strtol(clone_str, 0, 0);
+
+    free(clone_str);
+
+    if(attr_idx >= attr_node->attributeCount) {
+
+        return "Attribute index beyond range of node attributes";
+    }
+
+    *attribute = attr_node->attributes[attr_idx];
+
+    return 0;
 }
 
 char* TemplateExpression_render(
@@ -949,7 +1027,10 @@ char* IntegerTemplateExpression_render(
     char* error;
     void* attribute_ptr;
 
-    if((error = ASTNode_getAttributeByPath(expression->sourcePath, &attribute_ptr)) != 0) return error;
+    if((error = ASTNode_getAttributeByPath(node, expression->sourcePath, &attribute_ptr)) != 0) {
+
+        return error;
+    }
 
     size_t attribute_val = (size_t)attribute_ptr;
 
@@ -1061,6 +1142,9 @@ char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out
     String_cleanUp(template_name);
 
     if(error != 0) return error;
+
+    //TEMP
+    Template_print(template);
 
     if((error = Template_renderCompiled(template, node, out_string)) != 0) return error;
 
@@ -1562,6 +1646,8 @@ char* Expression_tryParse(FILE* in_file, ASTNode** node);
 
 char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
 
+    static int lambda_id = 0;
+
     //TEMP
     //printf("Trying to parse a lambda\n");
 
@@ -1616,7 +1702,7 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
         return expression_error;
     }
 
-    char* error = ASTNode_create(node, Lambda, 2, 0, sizeof(ASTLambdaNode));
+    char* error = ASTNode_create(node, Lambda, 2, 1, sizeof(ASTLambdaNode));
 
     if(error != 0)  {
 
@@ -1630,6 +1716,7 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
 
     (*node)->LN_PARAMS = parameterList;
     (*node)->LN_EXPR = expression;
+    (*node)->attributes[0] = (void*)(size_t)(lambda_id++);
 
     return 0;
 }
