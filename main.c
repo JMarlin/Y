@@ -1017,6 +1017,8 @@ char* ASTNode_getAttributeByPath(ASTNode* node, String* path, void** attribute) 
     return 0;
 }
 
+char* Template_renderCompiledInner(Template* template, ASTNode* node, String** out_str, int child_index); 
+
 char* TemplateExpression_render(
     TemplateExpression* expression, ASTNode* node, String** out_str, int child_index);
 
@@ -1047,7 +1049,21 @@ char* StringTemplateExpression_render(
 char* ReferenceTemplateExpression_render(
     TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) { 
 
-    return "Reference template rendering not implemented";
+    char* error;
+    ASTNode* source_node;
+
+    if((error = ASTNode_getChildByPath(node, expression->sourcePath, 0, &source_node)) != 0) {
+
+        return error;
+    }
+   
+    if((error = Template_renderCompiledInner(
+        expression->template, source_node, out_str, child_index)) != 0) {
+
+        return error;
+    }
+
+    return 0;
 }
 
 char* ExpansionTemplateExpression_render(
