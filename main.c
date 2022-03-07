@@ -845,8 +845,7 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
                     }
 
                     VoidList_add(&(*template)->expressions, expr);
-                    start_pos += 2;
-                    end_pos = start_pos;
+                    start_pos = end_pos;
                 } 
 
                 state = 0;
