@@ -469,19 +469,12 @@ TemplateConfig CTemplateConfig = {
     "lambda_declarations", //Lambda
     "" //Symbol
     },
-    3, 
+    1, 
     {
         {
             "lambda_declarations",
-            "typedef int (*Lambda{{ia0}}Type){{tc0`param_type_list`}};\n", 0
-        },
-        {
-            "param_type_list",
-            "({{e`{{t`param_type`}}`}})", 0
-        },
-        {
-            "param_type",
-            "{{c`!first`, `}}int", 0
+            "typedef int (*Lambda{{ia0}}Type)({{ec0`{{c`!first`, `}}int`}});\n"
+            "int Lambda{{ia0}}() { }\n", 
         }
     }
 };
