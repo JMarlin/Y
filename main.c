@@ -461,7 +461,7 @@ typedef struct TemplateConfig_s {
 
 TemplateConfig CTemplateConfig = {
     {
-    "", //Module
+    "module", //Module
     "", //Declaration
     "", //Parameter
     "", //ParameterList
@@ -469,12 +469,22 @@ TemplateConfig CTemplateConfig = {
     "lambda_declarations", //Lambda
     "" //Symbol
     },
-    1, 
+    2,
     {
+        {
+            "module",
+            "{{fc0a`lambdas`{{t`lambda_declaration`}}`}}"
+        }, 
         {
             "lambda_declarations",
             "typedef int (*Lambda{{ia0}}Type)({{ec0`{{c`!first`, `}}int`}});\n"
             "int Lambda{{ia0}}() { }\n", 
+        }
+    },
+    1,
+    {
+        {
+            "lambdas", is_lambda
         }
     }
 };
