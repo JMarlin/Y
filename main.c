@@ -261,9 +261,10 @@ void String_cleanUp(String* string) {
     free(string);
 }
 
+#define SN_TEXT attributes[0]
+
 typedef struct ASTSymbolNode_s {
     AN_COMMON_FIELDS;
-    String* text;
 } ASTSymbolNode;
 
 #define PN_SYMBOL children[0]
@@ -339,42 +340,23 @@ void ASTNode_cleanUp(ASTNode* node) {
 
 void ASTNode_print(ASTNode* node, int depth) { ASTNodeMethodsFor[node->type].print(node, depth); }
 
-char* ASTTree_findAllInner(ASTNode* root, ASTNodePredicate matches, VoidList* vlist) {
+typedef char* (*ASTNodeVisitor)(ASTNode*, void*);
 
-    char* error = 0;
+char* ASTNode_forAll(ASTNode* root, ASTNodeVisitor visit, void* args) {
 
-    if(
-        matches(root) &&
-        ((error = VoidList_add(vlist, root)) != 0) ) {
-    
-        return error;
-    }
+    char* error;
+
+    if((error = visit(root, args)) != 0) return error;
 
     for(int i = 0; i < root->childCount; i++) {
 
-        if((error = ASTTree_findAllInner(root->children[i], matches, vlist)) != 0) {
+        if((error = ASTNode_forAll(root->children[i], visit, args)) != 0) {
 
             return error;
         }
     }
 
-    if(error != 0) {
-
-        return error;
-    }
-
     return 0;
-}
-
-char* ASTTree_findAll(ASTNode* root, ASTNodePredicate matches, VoidList* vlist) {
-
-    VoidList_init(vlist);
-
-    char* error = ASTTree_findAllInner(root, matches, vlist);
-
-    if(error != 0) VoidList_cleanUp(vlist);
-
-    return error;
 }
 
 int ASTNode_IsLambda(ASTNode* node) {
@@ -382,76 +364,22 @@ int ASTNode_IsLambda(ASTNode* node) {
     return node->type == Lambda;
 }
 
-char* Lambda_generateCBody(ASTNode* node, int lambda_id, String** out_str) {
-
-    char* error = 0;
-
-    *out_str = String_new("int Lambda");
-
-    if(*out_str == 0) {
-
-        return "Unable to allocate a string for lambda body write-out";
-    }
-
-    char num_buf[50] = {0};
-
-    sprintf(num_buf, "%i", lambda_id);
-
-    if((error = String_appendCString(*out_str, num_buf)) != 0) {
-
-        String_cleanUp(*out_str);
-
-        return error;
-    }
-
-    if((error = String_appendCString(*out_str, "(")) != 0) {
-
-        String_cleanUp(*out_str);
-
-        return error;
-    }
-
-    for(int i = 0; i < node->LN_PARAMS->childCount; i++) {
-
-        char* param_str = i == 0 ? "int " : ", int ";
-
-        if((error = String_appendCString(*out_str, param_str)) != 0) {
-
-            String_cleanUp(*out_str);
-
-            return error;
-        }   
-
-        ASTSymbolNode* symbol = (ASTSymbolNode*)node->LN_PARAMS->children[i]->PN_SYMBOL;
-
-        if((error = String_append(*out_str, symbol->text)) != 0) {
-
-            String_cleanUp(*out_str);
-
-            return error;
-        }
-    }
-
-    if((error = String_appendCString(*out_str, ") {\n    return ")) != 0) {
-
-        String_cleanUp(*out_str);
-
-        return error;
-    }
-
-    return 0;
-}
-
 typedef struct Template_s {
     VoidList segments;
     VoidList expressions;
+    struct TemplateInfo_s* info;
 } Template;
 
 typedef struct TemplateInfo_s {
     char* templateName;
     char* template;
     Template* compiledTemplate;
+    ASTNodePredicate predicate;
 } TemplateInfo;
+
+typedef struct TemplatePredicate_s {
+    char* predicateName;
+} TemplatePredicate;
 
 typedef struct TemplateConfig_s {
     char* baseTemplateName[ASTNodeTypeCount];
@@ -466,25 +394,20 @@ TemplateConfig CTemplateConfig = {
     "", //Parameter
     "", //ParameterList
     "", //Operator
-    "lambda_declarations", //Lambda
+    "lambda_declaration", //Lambda
     "" //Symbol
     },
     2,
     {
         {
             "module",
-            "{{fc0a`lambdas`{{t`lambda_declaration`}}`}}"
+            "{{er`{{c`pred`{{t`lambda_declaration`}}`}}`}}", 0, 
+            ASTNode_IsLambda
         }, 
         {
-            "lambda_declarations",
+            "lambda_declaration",
             "typedef int (*Lambda{{ia0}}Type)({{ec0`{{c`!first`, `}}int`}});\n"
-            "int Lambda{{ia0}}() { }\n", 
-        }
-    },
-    1,
-    {
-        {
-            "lambdas", is_lambda
+            "int Lambda{{ia0}}({{ec0`{{c`!first`, `}}int {{sc0a0}}`}}) { }\n", 0, 0
         }
     }
 };
@@ -525,11 +448,11 @@ char* cstr_skip_whitespace(char** s, char* end, int expect_more) {
     return expect_more ? "Hit the end of a cstr while skipping whitespace" : 0;
 }
 
-char* Template_compile(TemplateConfig* config,  char** template_strp, Template** template);
+char* Template_compile(TemplateConfig* config, TemplateInfo* info, char** template_strp, Template** template);
 char* Template_getCompiled(TemplateConfig* config, String* template_name, Template** out_template);
 
 char* TemplateExpression_tryParse(
-    TemplateConfig* config, char** sp, char* end_pos, TemplateExpression** out_expr) {
+    TemplateConfig* config, TemplateInfo* info, char** sp, char* end_pos, TemplateExpression** out_expr) {
 
     char* s = *sp;
     char* error;
@@ -556,8 +479,9 @@ char* TemplateExpression_tryParse(
     //e<child_path>`text_expr`
     //    child_path: rule for navigating to the child to expand
     //                if there is no path, the target is the current node
-    //                if the path ends in a 's', the inner template is expanded only for the one child
-    //                if the path does not end in an 's', the inner template is expanded for each
+    //                if the path ends in an 's', the inner template is expanded only for the one child
+    //                if the path ends in an 'r', the inner template is expanded recursively for every child in the tree
+    //                if the path does not end in an 's' or an 'r', the inner template is expanded for each
     //                child in the terminal node
     //    text_expr:  embedded template that will be compiled and inserted into the compiled expression
     if(expr.typeCode == 'e') {
@@ -586,7 +510,7 @@ char* TemplateExpression_tryParse(
             return "Hit end of expression beginning template body of 'e' expression";
         }
 
-        if((error = Template_compile(config, &s, &expr.template)) != 0) {
+        if((error = Template_compile(config, info, &s, &expr.template)) != 0) {
 
             //TODO: Clean up everything
             return error;
@@ -604,10 +528,11 @@ char* TemplateExpression_tryParse(
     }
 
     //Conditional format:
-    //c`first | !first | <attribute_path> | !<attribute_path>`text_expr`
+    //c`first | !first | pred | !pred | <attribute_path> | !<attribute_path>`text_expr`
     //Conditions:
     //    first - true when this is either a standalone node or the first in an iteration
     //    !first - true when this is not the first node in an iteration
+    //    pred/!pred - true/false when the attached predicate function evaluates true
     //    attribute_path - the attribute is navigated to and assumed to be a boolean value
     //    !attribute_path - same as above, but inverts the value of the attribute
     //Value:
@@ -673,7 +598,7 @@ char* TemplateExpression_tryParse(
             return "Hit end of expression looking for template body in 'c' expression code";
         }
 
-        if((error = Template_compile(config, &s, &expr.template)) != 0) {
+        if((error = Template_compile(config, info, &s, &expr.template)) != 0) {
 
             //TODO: Clean up everything
             return error;
@@ -774,7 +699,7 @@ char* TemplateExpression_tryParse(
     return 0;
 }
 
-char* Template_compile(TemplateConfig* config,  char** template_strp, Template** template) {
+char* Template_compile(TemplateConfig* config, TemplateInfo* info, char** template_strp, Template** template) {
 
     char* template_str = *template_strp;
     char* error;
@@ -782,6 +707,8 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
     *template = (Template*)malloc(sizeof(Template));
 
     if(*template == 0) return "Failed to allocate memory for a template";
+
+    (*template)->info = info;
     
     VoidList_init(&(*template)->segments);
     VoidList_init(&(*template)->expressions);
@@ -843,7 +770,7 @@ char* Template_compile(TemplateConfig* config,  char** template_strp, Template**
 
                     TemplateExpression* expr;
 
-                    if((error = TemplateExpression_tryParse(config, &start_pos, end_pos - 2, &expr)) != 0) {
+                    if((error = TemplateExpression_tryParse(config, info, &start_pos, end_pos - 2, &expr)) != 0) {
                         
                         //TODO: Clean up everything
                         return error;
@@ -894,6 +821,7 @@ char* Template_getCompiled(TemplateConfig* config, String* template_name, Templa
         (template_info->compiledTemplate == 0) &&
         ((error = Template_compile(
             config,
+            template_info,
             &template_str,
             &template_info->compiledTemplate)) != 0) ) return error;
     
@@ -957,7 +885,7 @@ char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str, 
 
             if(path->data[i] == 'a' && rest_str != 0) break;  
 
-            return "Expected node path segment to begin with a 'c'";
+            return 0;
         }
 
         if(++i == path->length) break;
@@ -1027,10 +955,10 @@ char* ASTNode_getAttributeByPath(ASTNode* node, String* path, void** attribute) 
 char* Template_renderCompiledInner(Template* template, ASTNode* node, String** out_str, int child_index); 
 
 char* TemplateExpression_render(
-    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index);
+    Template* template, TemplateExpression* expression, ASTNode* node, String** out_str, int child_index);
 
 char* IntegerTemplateExpression_render(
-    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+    Template* template, TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
 
     char* error;
     void* attribute_ptr;
@@ -1052,13 +980,25 @@ char* IntegerTemplateExpression_render(
 }
 
 char* StringTemplateExpression_render(
-    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+    Template* template, TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
 
-    return "String template rendering not implemented";
+    char* error;
+    void* attribute_ptr;
+
+    if((error = ASTNode_getAttributeByPath(node, expression->sourcePath, &attribute_ptr)) != 0) {
+
+        return error;
+    }
+
+    String* attribute_str = (String*)attribute_ptr;
+
+    String_append(*out_str, attribute_str);
+
+    return 0;
 }
 
 char* ReferenceTemplateExpression_render(
-    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) { 
+    Template* template, TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) { 
 
     char* error;
     ASTNode* source_node;
@@ -1077,8 +1017,21 @@ char* ReferenceTemplateExpression_render(
     return 0;
 }
 
+typedef struct RecursiveRenderArgs_s {
+    Template* template;
+    String** outStr;
+    int index;
+} RecursiveRenderArgs;
+
+char* Template_renderDescender(ASTNode* node, void* void_args) {
+
+    RecursiveRenderArgs* args = (RecursiveRenderArgs*)void_args;
+
+    return Template_renderCompiledInner(args->template, node, args->outStr, args->index);
+}
+
 char* ExpansionTemplateExpression_render(
-    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+    Template* template, TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
 
     char* error;
     ASTNode* target_node;
@@ -1093,10 +1046,24 @@ char* ExpansionTemplateExpression_render(
         if((error = Template_renderCompiledInner(expression->template, target_node, out_str, 0)) != 0) {
 
             return error;
-        } else {
+        } 
 
-            return 0;
+        return 0;
+    }
+
+    if(
+        expression->sourcePath->length > 0 &&
+        expression->sourcePath->data[expression->sourcePath->length - 1] == 'r'
+    ) {
+
+        RecursiveRenderArgs args = { expression->template, out_str, 0 };
+
+        if((error = ASTNode_forAll(target_node, Template_renderDescender, &args)) != 0) {
+
+            return error;
         }
+
+        return 0;
     }
 
     for(int i = 0; i < target_node->childCount; i++) {
@@ -1112,7 +1079,7 @@ char* ExpansionTemplateExpression_render(
 }
 
 char* ConditionalTemplateExpression_render(
-    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+    Template* template, TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
 
     char* error;
     void* attribute_ptr;
@@ -1124,6 +1091,19 @@ char* ConditionalTemplateExpression_render(
         if(
             (expression->typeCode == 'c' && child_index != 0) ||
             (expression->typeCode == 'n' && child_index == 0)
+        ) return 0;
+    } else if( 
+        expression->sourcePath->length == strlen("pred") &&
+        strncmp(expression->sourcePath->data, "pred", expression->sourcePath->length) == 0
+    ) {
+
+        if(template->info->predicate == 0) return "Predicate specified in template, but predicate pointer is null";
+
+        int result = template->info->predicate(node);
+
+        if(
+            (expression->typeCode == 'c' && !result) ||
+            (expression->typeCode == 'n' && result)
         ) return 0;
     } else {
 
@@ -1144,22 +1124,22 @@ char* ConditionalTemplateExpression_render(
 }
 
 char* TemplateExpression_render(
-    TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
+    Template* template, TemplateExpression* expression, ASTNode* node, String** out_str, int child_index) {
 
     if(expression->typeCode == 'i')
-        return IntegerTemplateExpression_render(expression, node, out_str, child_index);
+        return IntegerTemplateExpression_render(template, expression, node, out_str, child_index);
 
     if(expression->typeCode == 's')
-        return StringTemplateExpression_render(expression, node, out_str, child_index);
+        return StringTemplateExpression_render(template, expression, node, out_str, child_index);
 
     if(expression->typeCode == 't')
-        return ReferenceTemplateExpression_render(expression, node, out_str, child_index);
+        return ReferenceTemplateExpression_render(template, expression, node, out_str, child_index);
 
     if(expression->typeCode == 'e')
-        return ExpansionTemplateExpression_render(expression, node, out_str, child_index);
+        return ExpansionTemplateExpression_render(template, expression, node, out_str, child_index);
 
     if(expression->typeCode == 'c' || expression->typeCode == 'n')
-        return ConditionalTemplateExpression_render(expression, node, out_str, child_index);
+        return ConditionalTemplateExpression_render(template, expression, node, out_str, child_index);
 
     return "Encountered an unknown expression type when rendering template";
 }
@@ -1179,6 +1159,7 @@ char* Template_renderCompiledInner(Template* template, ASTNode* node, String** o
         TemplateExpression* expression = (TemplateExpression*)template->expressions.data[i];
 
         if((error = TemplateExpression_render(
+            template,
             (TemplateExpression*)template->expressions.data[i],
             node,
             out_str,
@@ -1230,41 +1211,17 @@ char* ASTNode_renderTemplate(ASTNode* node, TemplateConfig* config, String** out
 
 char* ASTNode_writeOut(FILE* out_file, TemplateConfig* config, ASTNode* node) {
 
-    VoidList lambdas;
+    String* code_str;
 
-    char* error = ASTTree_findAll(node, ASTNode_IsLambda, &lambdas);
+    char* error = ASTNode_renderTemplate(node, config, &code_str);
 
-    if(error != 0) {
-
-        printf("Error: %s\n", error);
-
-        VoidList_cleanUp(&lambdas);
-    }
-
-    for(int i = 0; i < lambdas.count; i++) {
-
-        String* code_str;
-
-        error = ASTNode_renderTemplate(lambdas.data[i], config, &code_str);
-
-        if(error != 0) {
-
-            VoidList_cleanUp(&lambdas);
-
-            return error;
-        }
+    if(error != 0) return error;
  
-        fprintf(out_file, "%.*s", code_str->length, code_str->data);
-
-        String_cleanUp(code_str);
-    }
-
-    VoidList_cleanUp(&lambdas);
+    fprintf(out_file, "%.*s", code_str->length, code_str->data);
+    String_cleanUp(code_str);
 
     return 0;
 }
-
-char* Expression_tryParse(FILE* in_file, ASTNode** node);
 
 void ASTModuleNode_print(ASTNode* node, int depth) {
 
@@ -1320,17 +1277,17 @@ void ASTSymbolNode_print(ASTNode* node, int depth) {
 
     ASTSymbolNode* symbol = (ASTSymbolNode*)node;
 
-    print_indent(depth); printf("- Symbol \n");
-    print_indent(depth); printf("  Text: %.*s\n", symbol->text->length, symbol->text->data);
-}
+    String* text = (String*)symbol->SN_TEXT;
 
-void String_cleanUp(String*);
+    print_indent(depth); printf("- Symbol \n");
+    print_indent(depth); printf("  Text: %.*s\n", text->length, text->data);
+}
 
 void ASTSymbolNode_cleanUp(ASTNode* node) {
 
     ASTSymbolNode* symbol_node = (ASTSymbolNode*)node;
 
-    String_cleanUp(symbol_node->text);
+    String_cleanUp((String*)symbol_node->SN_TEXT);
 }
 
 void ASTOperatorNode_print(ASTNode* node, int depth) {
@@ -1447,7 +1404,7 @@ char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
         break;
     }
 
-    error = ASTNode_create(node, Symbol, 0, 0, sizeof(ASTSymbolNode));
+    error = ASTNode_create(node, Symbol, 0, 1, sizeof(ASTSymbolNode));
 
     if(*node == 0) {
 
@@ -1458,7 +1415,7 @@ char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
         return "Couldn't allocate memory for ast symbol";
     }
 
-    ((ASTSymbolNode*)*node)->text = symbol_text;
+    (*node)->SN_TEXT = (void*)symbol_text;
 
     return 0;
 }
