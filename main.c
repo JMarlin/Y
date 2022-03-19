@@ -4,6 +4,7 @@
 #include <string.h>
 #include "ast.h"
 #include "parse.h"
+#include "template.h"
 #include "ctemplate.h"
 
 int main(int argc, char* argv[]) {
