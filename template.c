@@ -1,4 +1,7 @@
 #include "template.h"
+#include "helpers.h"
+#include <string.h>
+#include <stdlib.h>
 
 char* TemplateConfig_lookUp(TemplateConfig* config, String* template_name,
     TemplateInfo** template_info) {

@@ -1,6 +1,17 @@
 #ifndef TEMPLATE_H
 #define TEMPLATE_H
 
+struct Template_s;
+struct TemplateInfo_s;
+struct TemplatePredicate_s;
+struct TemplateConfig_s;
+struct TemplateExpression_s;
+struct RecursiveRenderArgs_s;
+
+#include "ast.h"
+#include "voidlist.h"
+#include "string.h"
+
 typedef struct Template_s {
     VoidList segments;
     VoidList expressions;
@@ -41,11 +52,12 @@ char* Template_compile(TemplateConfig* config, TemplateInfo* info, char** templa
 
 char* Template_getCompiled(TemplateConfig* config, String* template_name, Template** out_template);
 
-char* Template_renderCompiledInner(Template* template, ASTNode* node, String** out_str,
+char* Template_renderCompiledInner(Template* template, struct ASTNode_s* node, String** out_str,
     int child_index); 
 
-char* TemplateExpression_render(Template* template, TemplateExpression* expression,
-    ASTNode* node, String** out_str, int child_index);
+char* Template_renderCompiled(Template* template, struct ASTNode_s* node, String** out_str);
 
+char* TemplateExpression_render(Template* template, TemplateExpression* expression,
+    struct ASTNode_s* node, String** out_str, int child_index);
 
 #endif //TEMPLATE_H

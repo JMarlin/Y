@@ -1,4 +1,6 @@
 #include "parse.h"
+#include "helpers.h"
+#include <stdlib.h>
 
 char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
 

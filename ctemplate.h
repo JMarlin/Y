@@ -26,4 +26,4 @@ TemplateConfig CTemplateConfig = {
     }
 };
 
-#define //CTEMPLATE_H
+#endif //CTEMPLATE_H

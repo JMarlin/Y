@@ -1,9 +1,5 @@
-
-typedef struct VoidList_s {
-    int capacity;
-    int count;
-    void** data;
-} VoidList;
+#include "voidlist.h"
+#include <stdlib.h>
 
 void VoidList_init(VoidList* vlist) {
     vlist->capacity = 0;

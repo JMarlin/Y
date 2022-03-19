@@ -1,4 +1,7 @@
 #include "ast.h"
+#include "helpers.h"
+#include <stdlib.h>
+#include <string.h>
 
 const char* OperatorString[] = {
     "Add",
@@ -6,6 +9,14 @@ const char* OperatorString[] = {
     "Multiply",
     "Divide",
     "INVALID"
+};
+
+const ASTNodeMethods ASTNodeMethodsFor[] = {
+    AN_METHODS_STRUCT(Module),
+    AN_METHODS_STRUCT(Declaration),
+    AN_METHODS_STRUCT(Parameter),
+    AN_METHODS_STRUCT(Lambda),
+    AN_METHODS_STRUCT(Symbol)
 };
 
 char* ASTNode_create(
