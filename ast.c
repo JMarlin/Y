@@ -15,6 +15,8 @@ const ASTNodeMethods ASTNodeMethodsFor[] = {
     AN_METHODS_STRUCT(Module),
     AN_METHODS_STRUCT(Declaration),
     AN_METHODS_STRUCT(Parameter),
+    AN_METHODS_STRUCT(ParameterList),
+    AN_METHODS_STRUCT(Operator),
     AN_METHODS_STRUCT(Lambda),
     AN_METHODS_STRUCT(Symbol)
 };
