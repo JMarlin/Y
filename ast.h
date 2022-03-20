@@ -140,6 +140,8 @@ char* ASTNode_forAll(ASTNode* root, ASTNodeVisitor visit, void* args);
 
 int ASTNode_IsLambda(ASTNode* node); 
 
+int ASTNode_IsDeclaration(ASTNode* node);
+
 char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str,
     ASTNode** out_node); 
 

@@ -108,6 +108,11 @@ int ASTNode_IsLambda(ASTNode* node) {
     return node->type == Lambda;
 }
 
+int ASTNode_IsDeclaration(ASTNode* node) {
+    
+    return node->type == Declaration;
+}
+
 char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str,
     ASTNode** out_node) {
 
