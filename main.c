@@ -51,6 +51,13 @@ int main(int argc, char* argv[]) {
 
     FILE* in_file = fopen(in_name, "r");
 
+    if(in_file == 0) {
+
+        printf("Unable to open input file %s\n", in_name);
+
+        return 0;
+    }
+    
     ASTNode* module_ast;
 
     char* error_message = Module_tryParse(in_file, &module_ast);
@@ -67,7 +74,16 @@ int main(int argc, char* argv[]) {
     if(mode == MODE_WRITE_C) {
 
         //TODO: Actually parse command line args as described
-        FILE* out_file = fopen(argv[2], "w");
+        FILE* out_file = fopen(out_name, "w");
+
+        if(out_file == 0) {
+
+            printf("Unable to open output file %s\n", out_name);
+
+            ASTNode_cleanUp(module_ast);
+
+            return 0;
+        }
 
         error_message = ASTNode_writeOut(out_file, &CTemplateConfig, module_ast);
 

@@ -142,6 +142,18 @@ int ASTNode_IsLambda(ASTNode* node);
 
 int ASTNode_IsDeclaration(ASTNode* node);
 
+int ASTNode_IsOperator(ASTNode* node);
+
+int ASTNode_IsSymbol(ASTNode* node);
+
+int ASTOperatorNode_OperatorIsAdd(ASTNode* node);
+
+int ASTOperatorNode_OperatorIsSub(ASTNode* node);
+
+int ASTOperatorNode_OperatorIsMul(ASTNode* node);
+
+int ASTOperatorNode_OperatorIsDiv(ASTNode* node);
+
 char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str,
     ASTNode** out_node); 
 

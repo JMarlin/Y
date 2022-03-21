@@ -1,2 +1,4 @@
-var addNumbers = (var a, var b, var c) => (var x, var y) => x + y;
-var doAdding = (var z) => z + a;
+var addNumbers = (var x, var y) => x + y;
+
+printf("%i plus %i = %i\n", 1, 2, addNumbers(1, 2));
+

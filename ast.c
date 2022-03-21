@@ -113,6 +113,36 @@ int ASTNode_IsDeclaration(ASTNode* node) {
     return node->type == Declaration;
 }
 
+int ASTNode_IsOperator(ASTNode* node) {
+
+    return node->type == Operator;
+}
+
+int ASTNode_IsSymbol(ASTNode* node) {
+
+    return node->type == Symbol;
+}
+
+int ASTOperatorNode_OperatorIsAdd(ASTNode* node) {
+
+    return ((ASTOperatorNode*)node)->operatorType == OpAdd;
+}
+
+int ASTOperatorNode_OperatorIsSub(ASTNode* node) {
+
+    return ((ASTOperatorNode*)node)->operatorType == OpSubtract;
+}
+
+int ASTOperatorNode_OperatorIsDiv(ASTNode* node) {
+
+    return ((ASTOperatorNode*)node)->operatorType == OpDivide;
+}
+
+int ASTOperatorNode_OperatorIsMul(ASTNode* node) {
+
+    return ((ASTOperatorNode*)node)->operatorType == OpMultiply;
+}
+
 char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str,
     ASTNode** out_node) {
 
