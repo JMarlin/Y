@@ -67,7 +67,7 @@ char* String_appendChar(String* string, char c) {
     temp.length = 1;
     temp.data = &c;
 
-    String_append(string, &temp);
+    return String_append(string, &temp);
 }
 
 char* String_appendCString(String* string, char* s) {
@@ -78,7 +78,7 @@ char* String_appendCString(String* string, char* s) {
     temp.length = strlen(s);
     temp.data = s;
 
-    String_append(string, &temp);
+    return String_append(string, &temp);
 }
 
 char* String_sliceCString(char* start, char* end, String** string) {
