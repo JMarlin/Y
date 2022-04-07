@@ -14,6 +14,8 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node);
 
 char* Lambda_tryParse(FILE* in_file, ASTNode** node);
 
+char* Invocation_tryParse(FILE* in_file, ASTNode** node);
+
 char* Expression_tryParse(FILE* in_file, ASTNode** node);
 
 char* Declaration_tryParse(FILE* in_file, ASTNode** node);

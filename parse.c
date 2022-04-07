@@ -411,6 +411,7 @@ char* Expression_tryParse(FILE* in_file, ASTNode** node) {
     
     if(Lambda_tryParse(in_file, node) == 0) return 0;
     if((error = Operator_tryParse(in_file, node)) == 0) return 0;
+    if((error = Invocation_tryParse(in_file, node)) == 0) return 0;
 
     return error;
 }
@@ -513,6 +514,7 @@ char* Statement_tryParse(FILE* in_file, ASTNode** node) {
     char* error;
 
     if((error = Declaration_tryParse(in_file, node)) == 0) return 0;
+    if((error = Expression_tryParse(in_file, node)) == 0) return 0;
 
     return error;
 }
