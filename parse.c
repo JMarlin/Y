@@ -402,6 +402,107 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
+char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
+
+    char c;
+    char* error;
+    VoidList child_list;
+    fpos_t original_position;
+    ASTNode* symbol;
+
+    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+
+    error = Symbol_tryParse(in_file, &symbol);
+
+    if(error != 0) {
+
+        fsetpos(in_file, &original_position);
+
+	return error;
+    }
+
+    if((error = VoidList_add(&child_list, symbol) != 0)) {
+        
+        fsetpos(in_file, &original_position);
+
+        ASTNode_cleanUp(symbol);
+
+        return error;
+    }
+
+    skip_whitespace(in_file);
+
+    if(fread(&c, 1, 1, in_file) != 1) return "Unexpected EOF attempting to read invocation";
+
+    if(c != '(') {
+
+        fsetpos(in_file, &original_position);
+
+	return "Expected opening paren following symbol in invocation";
+    }
+
+    int expect_next = 0;
+
+    while(1) {
+
+	skip_whitespace(in_file);
+
+	error = Expression_tryParse(in_file, &arg_expression);
+
+	if(error != 0 && expect_next) {
+
+            VoidList_cleanUp(child_list);
+	    ASTNode_cleanUp(symbol);
+
+	    return "Expected argument following comma in invocation";
+	}
+
+	if(error == 0) {
+
+            error = VoidList_add(child_list, arg_expression);
+
+	    if(error != 0) {
+
+		VoidList_cleanUp(child_list);
+		ASTNode_cleanUp(symbol);
+
+		return error;
+	    }
+        }
+
+	skip_whitespace(in_file);
+    
+        if(fread(&c, 1, 1, in_file) != 1) {
+
+	    //TODO: We should clean up the individual nodes as well
+	    VoidList_cleanUp(child_list);
+	    ASTNode_cleanUp(symbol);
+
+	    return "Unexpected EOF reading invocation param list";
+	}
+
+	if(c == ')') break;
+
+        if(c == ',') expect_next = 1;
+    }
+
+    error = ASTNode_create(node, Invocation, argExpressionCount + 1, 1,
+		    sizeof(ASTInvocationNode));
+
+    if(error != 0) {
+    
+        VoidList_cleanUp(child_list);
+	ASTNode_cleanUp(symbol);
+        
+	return "Failed to allocate memory for an invocation node";
+    }
+
+    (*node)->childCount = child_list.count;
+    (*node)->children = (ASTNode**)child_list.data;
+
+    return 0;
+}
+
 char* Expression_tryParse(FILE* in_file, ASTNode** node) {
 
     //TEMP
