@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        if(argv[i][0] == '-' && argv[i][1] == 'a') {
+        if(argv[i][0] == '-' && argv[i][1] == 'a' && argv[i][2] == 0) {
 
             mode = MODE_DUMP_AST;
 

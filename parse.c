@@ -2,6 +2,74 @@
 #include "helpers.h"
 #include <stdlib.h>
 
+char* Value_tryParse(FILE* in_file, ASTNode** node) {
+
+    char* error;
+
+    if(StringLiteral_tryParse(in_file, node) == 0) return 0;
+    if((error = Symbol_tryParse(in_file, node)) == 0) return 0;
+
+    return error;
+}
+
+char* StringLiteral_tryParse(FILE* in_file, ASTNode** node) {
+
+    fpos_t original_position;
+    char* error;
+    char c = 0;
+    String* string;
+
+    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+
+    skip_whitespace(in_file);
+
+    if(fread(&c, 1, 1, in_file) != 1) return "Encountered end of file inside of string";
+
+    if(c != '"') return "String literal did not begin with double-quotes";
+
+    string = String_new(0);
+
+    if(!string) return "Failed to allocate string for a string literal";
+
+    int ignore_quote = 0;
+
+    while(1) {
+
+        if(fread(&c, 1, 1, in_file) != 1) {
+	
+            String_cleanUp(string);
+
+            return "Encountered end of file inside of string";
+        }
+
+	if(c == '"') {
+
+            if(ignore_quote) {
+
+		ignore_quote = 0;
+	    } else {
+
+                break;
+	    }
+        }
+
+	if(c == '\\') ignore_quote = 1;
+
+        String_appendChar(string, c);
+    }
+
+    if((error = ASTNode_create(node, StringLiteral, 0, 1)) != 0) {
+
+        String_cleanUp(string);
+
+	return "Failed to allocate space for a string literal";
+    }
+
+    (*node)->SLN_STRING = string;
+
+    return 0;
+}
+
 char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
 
     //TEMP
@@ -66,7 +134,7 @@ char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
         break;
     }
 
-    error = ASTNode_create(node, Symbol, 0, 1, sizeof(ASTSymbolNode));
+    error = ASTNode_create(node, Symbol, 0, 1);
 
     if(*node == 0) {
 
@@ -95,7 +163,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
 
     ASTNode* left_expr;
 
-    char* left_error = Symbol_tryParse(in_file, &left_expr);
+    char* left_error = Value_tryParse(in_file, &left_expr);
 
     if(left_error != 0) {
     
@@ -140,7 +208,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
     
     ASTNode* right_expr;
 
-    char* right_error = Symbol_tryParse(in_file, &right_expr);
+    char* right_error = Value_tryParse(in_file, &right_expr);
 
     if(right_error != 0) {
     
@@ -151,7 +219,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
         return right_error;
     }
 
-    char* error = ASTNode_create(node, Operator, 2, 0, sizeof(ASTOperatorNode));
+    char* error = ASTNode_create(node, Operator, 2, 1);
 
     if(error != 0) {
 
@@ -165,6 +233,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
 
     (*node)->ON_LEFT_EXPR = left_expr;
     (*node)->ON_RIGHT_EXPR = right_expr;
+    (*node)->ON_OPERATOR = (void*)op_type;
 
     return 0;
 }
@@ -208,7 +277,7 @@ char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
 
     if(error != 0) return error;
 
-    error = ASTNode_create(node, Parameter, 1, 0, sizeof(ASTParameterNode));
+    error = ASTNode_create(node, Parameter, 1, 0);
 
     if(error != 0) {
     
@@ -308,7 +377,7 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
         return "Expected a closing parenthesis at the end of parameter list";
     }
 
-    error = ASTNode_create(node, ParameterList, 0, 0, sizeof(ASTParameterListNode));
+    error = ASTNode_create(node, ParameterList, 0, 0);
 
     if(error != 0) {
 
@@ -383,7 +452,7 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
         return expression_error;
     }
 
-    char* error = ASTNode_create(node, Lambda, 2, 1, sizeof(ASTLambdaNode));
+    char* error = ASTNode_create(node, Lambda, 2, 1);
 
     if(error != 0)  {
 
@@ -410,6 +479,8 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
     fpos_t original_position;
     ASTNode* symbol;
 
+    VoidList_init(&child_list);
+
     if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
 
     error = Symbol_tryParse(in_file, &symbol);
@@ -421,7 +492,7 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
 	return error;
     }
 
-    if((error = VoidList_add(&child_list, symbol) != 0)) {
+    if((error = VoidList_add(&child_list, symbol)) != 0) {
         
         fsetpos(in_file, &original_position);
 
@@ -442,6 +513,7 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
     }
 
     int expect_next = 0;
+    ASTNode* arg_expression;
 
     while(1) {
 
@@ -451,7 +523,7 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
 
 	if(error != 0 && expect_next) {
 
-            VoidList_cleanUp(child_list);
+            VoidList_cleanUp(&child_list);
 	    ASTNode_cleanUp(symbol);
 
 	    return "Expected argument following comma in invocation";
@@ -459,11 +531,11 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
 
 	if(error == 0) {
 
-            error = VoidList_add(child_list, arg_expression);
+            error = VoidList_add(&child_list, arg_expression);
 
 	    if(error != 0) {
 
-		VoidList_cleanUp(child_list);
+		VoidList_cleanUp(&child_list);
 		ASTNode_cleanUp(symbol);
 
 		return error;
@@ -475,7 +547,7 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
         if(fread(&c, 1, 1, in_file) != 1) {
 
 	    //TODO: We should clean up the individual nodes as well
-	    VoidList_cleanUp(child_list);
+	    VoidList_cleanUp(&child_list);
 	    ASTNode_cleanUp(symbol);
 
 	    return "Unexpected EOF reading invocation param list";
@@ -486,12 +558,11 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
         if(c == ',') expect_next = 1;
     }
 
-    error = ASTNode_create(node, Invocation, argExpressionCount + 1, 1,
-		    sizeof(ASTInvocationNode));
+    error = ASTNode_create(node, Invocation, 0, 0);
 
     if(error != 0) {
     
-        VoidList_cleanUp(child_list);
+        VoidList_cleanUp(&child_list);
 	ASTNode_cleanUp(symbol);
         
 	return "Failed to allocate memory for an invocation node";
@@ -588,7 +659,7 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
         return "No semicolon following logical end of declaration statement";
     }
 
-    error = ASTNode_create(node, Declaration, 2, 0, sizeof(ASTDeclarationNode));
+    error = ASTNode_create(node, Declaration, 2, 0);
 
     if(error != 0) {
     
@@ -629,7 +700,7 @@ char* Module_tryParse(FILE* in_file, ASTNode** node) {
     char* inner_error = 0;
     ASTNode* new_statement;
 
-    inner_error = ASTNode_create(node, Module, 0, 0, sizeof(ASTModuleNode));
+    inner_error = ASTNode_create(node, Module, 0, 0);
 
     if(inner_error != 0) return "Unable to allocate memory for a module node";
 

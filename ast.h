@@ -25,6 +25,8 @@ typedef enum {
     Operator,
     Lambda,
     Symbol,
+    Invocation,
+    StringLiteral,
     ASTNodeTypeCount
 } ASTNodeType;
 
@@ -32,16 +34,13 @@ typedef enum {
 #include "template.h"
 #include <stddef.h>
 #include <stdio.h>
-
-#define AN_COMMON_FIELDS \
-    ASTNodeType type; \
-    int childCount; \
-    struct ASTNode_s** children; \
-    int attributeCount; \
-    void** attributes;
-
+    
 typedef struct ASTNode_s {
-    AN_COMMON_FIELDS;
+    ASTNodeType type;
+    int childCount;
+    struct ASTNode_s** children;
+    int attributeCount;
+    void** attributes;
 } ASTNode;
 
 typedef struct ASTNodeMethods_s {
@@ -60,6 +59,8 @@ AN_METHODS_DECL(ParameterList);
 AN_METHODS_DECL(Operator);
 AN_METHODS_DECL(Lambda);
 AN_METHODS_DECL(Symbol);
+AN_METHODS_DECL(Invocation);
+AN_METHODS_DECL(StringLiteral);
 
 #define AN_METHODS_STRUCT(n) \
     (ASTNodeMethods){ \
@@ -71,19 +72,7 @@ extern const ASTNodeMethods ASTNodeMethodsFor[];
 
 #define SN_TEXT attributes[0]
 
-typedef struct ASTSymbolNode_s {
-    AN_COMMON_FIELDS;
-} ASTSymbolNode;
-
 #define PN_SYMBOL children[0]
-
-typedef struct ASTParameterNode_s {
-    AN_COMMON_FIELDS;
-} ASTParameterNode;
-
-typedef struct ASTParameterListNode_s {
-    AN_COMMON_FIELDS;
-} ASTParameterListNode;
 
 typedef enum {
     OpAdd,
@@ -97,40 +86,24 @@ extern const char* OperatorString[];
 
 #define ON_LEFT_EXPR children[0]
 #define ON_RIGHT_EXPR children[1]
-
-typedef struct ASTOperatorNode_s {
-    AN_COMMON_FIELDS;
-    ASTOperatorType operatorType;
-} ASTOperatorNode;
+#define ON_OPERATOR attributes[0]
 
 #define DN_SYMBOL children[0]
 #define DN_INITIALIZER children[1]
 
-typedef struct ASTDeclarationNode_s {
-    AN_COMMON_FIELDS;
-} ASTDeclarationNode;
-
 #define LN_PARAMS children[0]
 #define LN_EXPR children[1]
-
-typedef struct ASTLambdaNode_s {
-    AN_COMMON_FIELDS;
-} ASTLambdaNode;
-
-typedef struct ASTModuleNode_s {
-    AN_COMMON_FIELDS;
-} ASTModuleNode;
 
 #define AN_SYMBOL children[0]
 #define AN_EXPR children[1]
 
-typedef struct ASTAssignmentNode_s {
-    AN_COMMON_FIELDS;
-} ASTAssignmentNode;
+#define IN_SYMBOL children[0]
+#define IN_ARG(n) children[(n) + 1]
+#define IN_ARGCOUNT(i) ((i)->childCount - 1)
 
-char* ASTNode_create(
-    ASTNode** node, ASTNodeType type, int childCount,
-    int attributeCount, size_t nodeSize); 
+#define SLN_STRING attributes[0]
+
+char* ASTNode_create(ASTNode** node, ASTNodeType type, int childCount, int attributeCount); 
 
 void ASTNode_cleanUp(ASTNode* node); 
 

@@ -4,9 +4,9 @@
 
 void String_init(String* string, char* s) {
 
-	string->length = s == 0 ? 0 : strlen(s);
-	string->capacity = 0;
-	string->data = s;
+    string->length = s == 0 ? 0 : strlen(s);
+    string->capacity = 0;
+    string->data = s;
 }
 
 String* String_new(char* s) {

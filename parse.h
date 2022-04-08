@@ -4,6 +4,10 @@
 #include "ast.h"
 #include <stdio.h>
 
+char* StringLiteral_tryParse(FILE* in_file, ASTNode** node);
+
+char* Value_tryParse(FILE* in_file, ASTNode** node);
+
 char* Symbol_tryParse(FILE* in_file, ASTNode** node);
 
 char* Operator_tryParse(FILE* in_file, ASTNode** node);

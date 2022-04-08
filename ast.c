@@ -21,11 +21,9 @@ const ASTNodeMethods ASTNodeMethodsFor[] = {
     AN_METHODS_STRUCT(Symbol)
 };
 
-char* ASTNode_create(
-    ASTNode** node, ASTNodeType type, int childCount,
-    int attributeCount, size_t nodeSize) {
+char* ASTNode_create(ASTNode** node, ASTNodeType type, int childCount, int attributeCount) {
 
-    *node = (ASTNode*)malloc(nodeSize);
+    *node = (ASTNode*)malloc(sizeof(ASTNode));
 
     if(*node == 0) {
         
@@ -125,22 +123,22 @@ int ASTNode_IsSymbol(ASTNode* node) {
 
 int ASTOperatorNode_OperatorIsAdd(ASTNode* node) {
 
-    return ((ASTOperatorNode*)node)->operatorType == OpAdd;
+    return node->ON_OPERATOR == (void*)OpAdd;
 }
 
 int ASTOperatorNode_OperatorIsSub(ASTNode* node) {
 
-    return ((ASTOperatorNode*)node)->operatorType == OpSubtract;
+    return node->ON_OPERATOR == (void*)OpSubtract;
 }
 
 int ASTOperatorNode_OperatorIsDiv(ASTNode* node) {
 
-    return ((ASTOperatorNode*)node)->operatorType == OpDivide;
+    return node->ON_OPERATOR == (void*)OpDivide;
 }
 
 int ASTOperatorNode_OperatorIsMul(ASTNode* node) {
 
-    return ((ASTOperatorNode*)node)->operatorType == OpMultiply;
+    return node->ON_OPERATOR == (void*)OpMultiply;
 }
 
 char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str,
@@ -265,13 +263,11 @@ char* ASTNode_writeOut(FILE* out_file, TemplateConfig* config, ASTNode* node) {
 
 void ASTModuleNode_print(ASTNode* node, int depth) {
 
-    ASTModuleNode* module_node = (ASTModuleNode*)node;
-    
     print_indent(depth); printf("- Module\n");
 
-    for(int i = 0; i < module_node->childCount; i++) {
+    for(int i = 0; i < node->childCount; i++) {
         
-        ASTNode_print(module_node->children[i], depth + 1);
+        ASTNode_print(node->children[i], depth + 1);
     }
 }
 
@@ -315,9 +311,7 @@ void ASTParameterListNode_cleanUp(ASTNode* node) { }
 
 void ASTSymbolNode_print(ASTNode* node, int depth) {
 
-    ASTSymbolNode* symbol = (ASTSymbolNode*)node;
-
-    String* text = (String*)symbol->SN_TEXT;
+    String* text = (String*)node->SN_TEXT;
 
     print_indent(depth); printf("- Symbol \n");
     print_indent(depth); printf("  Text: %.*s\n", text->length, text->data);
@@ -325,39 +319,61 @@ void ASTSymbolNode_print(ASTNode* node, int depth) {
 
 void ASTSymbolNode_cleanUp(ASTNode* node) {
 
-    ASTSymbolNode* symbol_node = (ASTSymbolNode*)node;
-
-    String_cleanUp((String*)symbol_node->SN_TEXT);
+    String_cleanUp((String*)node->SN_TEXT);
 }
 
 void ASTOperatorNode_print(ASTNode* node, int depth) {
 
-    ASTOperatorNode* operator_node = (ASTOperatorNode*)node;
-
     print_indent(depth); printf("- Operator\n");
-    print_indent(depth); printf("  Operation: %s\n", OperatorString[operator_node->operatorType]);
+    print_indent(depth); printf("  Operation: %s\n", OperatorString[(size_t)node->ON_OPERATOR]);
     print_indent(depth); printf("  LeftExpr:\n");
-    ASTNode_print(operator_node->ON_LEFT_EXPR, depth + 1);
+    ASTNode_print(node->ON_LEFT_EXPR, depth + 1);
     print_indent(depth); printf("  RightExpr:\n");
-    ASTNode_print(operator_node->ON_RIGHT_EXPR, depth + 1);
+    ASTNode_print(node->ON_RIGHT_EXPR, depth + 1);
 }
 
 void ASTOperatorNode_cleanUp(ASTNode* node) { }
 
 void ASTLambdaNode_print(ASTNode* node, int depth) {
 
-    ASTLambdaNode* lambda_node = (ASTLambdaNode*)node;
-
     print_indent(depth); printf("- Lambda\n");
     print_indent(depth); printf("  Parameters:\n");
 
-    ASTNode_print(lambda_node->LN_PARAMS, depth + 1);
+    ASTNode_print(node->LN_PARAMS, depth + 1);
 
     print_indent(depth); printf("  Body:\n");
 
-    ASTNode_print(lambda_node->LN_EXPR, depth + 1);
+    ASTNode_print(node->LN_EXPR, depth + 1);
 }
 
 void ASTLambdaNode_cleanUp(ASTNode* node) { }
 
+void ASTStringLiteralNode_print(ASTNode* node, int depth) {
+
+    String* string = node->SLN_STRING;
+    
+    print_indent(depth); printf("- String Literal: '%.*s'\n", string->length, string->data);
+}
+
+void ASTStringLiteralNode_cleanUp(ASTNode* node) {
+
+    String* string = node->SLN_STRING;
+
+    String_cleanUp(string);
+}
+
+void ASTInvocationNode_print(ASTNode* node, int depth) {
+
+    print_indent(depth); printf("- Invocation:\n");
+    print_indent(depth); printf("  Symbol:\n");
+
+    ASTNode_print(node->IN_SYMBOL, depth + 1);
+
+    for(int i = 0; i < IN_ARGCOUNT(node); i++) {
+	
+        print_indent(depth); printf("  Argument %i:\n", i);
+
+	ASTNode_print(node->IN_ARG(i), depth + 1);
+    }
+}
 
