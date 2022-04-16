@@ -59,8 +59,9 @@ int main(int argc, char* argv[]) {
     }
     
     ASTNode* module_ast;
+    Scanner scanner = NewScanner(in_file);
 
-    char* error_message = Module_tryParse(in_file, &module_ast);
+    char* error_message = Module_tryParse(scanner, &module_ast, 0);
 
     if(error_message) {
         

@@ -1,10 +1,13 @@
 all: yc
 
-yc: main.o helpers.o ast.o parse.o template.o string.o voidlist.o
-	gcc -o yc main.o helpers.o ast.o parse.o template.o string.o voidlist.o -g
+yc: main.o scanner.o helpers.o ast.o parse.o template.o string.o voidlist.o
+	gcc -o yc main.o scanner.o helpers.o ast.o parse.o template.o string.o voidlist.o -g
 
 main.o: main.c ast.h parse.h ctemplate.h
 	gcc -c -o main.o main.c -g
+
+scanner.o: scanner.c scanner.h
+	gcc -c -o scanner.o scanner.c -g
 
 helpers.o: helpers.c helpers.h
 	gcc -c -o helpers.o helpers.c -g
@@ -12,7 +15,7 @@ helpers.o: helpers.c helpers.h
 ast.o: ast.c ast.h helpers.h template.h string.h voidlist.h
 	gcc -c -o ast.o ast.c -g
 
-parse.o: parse.c parse.h helpers.h ast.h string.h voidlist.h
+parse.o: parse.c parse.h scanner.h helpers.h ast.h string.h voidlist.h
 	gcc -c -o parse.o parse.c -g
 
 template.o: template.c template.h ast.h string.h voidlist.h

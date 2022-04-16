@@ -1,68 +1,81 @@
 #include "parse.h"
 #include "helpers.h"
+#include "scanner.h"
 #include <stdlib.h>
 
-char* Value_tryParse(FILE* in_file, ASTNode** node) {
+char* Value_tryParse(Scanner scanner, ASTNode** node, int level) {
+
+    //TEMP
+    print_indent(level); printf("Trying to parse a value\n");
 
     char* error;
 
-    if(StringLiteral_tryParse(in_file, node) == 0) return 0;
-    if((error = Symbol_tryParse(in_file, node)) == 0) return 0;
+    if(StringLiteral_tryParse(scanner, node, level + 1) == 0) return 0;
+    if((error = Symbol_tryParse(scanner, node, level + 1)) == 0) return 0;
 
     return error;
 }
 
-char* StringLiteral_tryParse(FILE* in_file, ASTNode** node) {
+char* StringLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    fpos_t original_position;
+    //TEMP
+    print_indent(level); printf("Trying to parse a string literal\n");
+
+    ScannerBegin(scanner);
+
     char* error;
-    char c = 0;
+    ScanResult sr = { 0 };
     String* string;
 
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    skip_whitespace(in_file);
-
-    if(fread(&c, 1, 1, in_file) != 1) return "Encountered end of file inside of string";
-
-    if(c != '"') return "String literal did not begin with double-quotes";
+    ScannerSkipWhitespace(scanner);
+    
+    if(!ScannerNextIs(scanner, '"'))
+        return "String literal did not begin with double-quotes";
 
     string = String_new(0);
 
-    if(!string) return "Failed to allocate string for a string literal";
+    if(!string) {
+
+        ScannerRollbackFull(scanner);
+
+        return "Failed to allocate string for a string literal";
+    }
 
     int ignore_quote = 0;
 
     while(1) {
 
-        if(fread(&c, 1, 1, in_file) != 1) {
-	
+        sr = ScannerGetNextStrict(scanner);
+
+        if(sr.err) {
+
             String_cleanUp(string);
 
             return "Encountered end of file inside of string";
         }
 
-	if(c == '"') {
+	    if(sr.val == '"') {
 
             if(ignore_quote) {
 
-		ignore_quote = 0;
-	    } else {
+		        ignore_quote = 0;
+	        } else {
 
                 break;
-	    }
+	        }
         }
 
-	if(c == '\\') ignore_quote = 1;
+	if(sr.val == '\\') ignore_quote = 1;
 
-        String_appendChar(string, c);
+        String_appendChar(string, sr.val);
     }
 
     if((error = ASTNode_create(node, StringLiteral, 0, 1)) != 0) {
 
+        ScannerRollbackFull(scanner);
         String_cleanUp(string);
 
-	return "Failed to allocate space for a string literal";
+    	return "Failed to allocate space for a string literal";
     }
 
     (*node)->SLN_STRING = string;
@@ -70,48 +83,48 @@ char* StringLiteral_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
+char* Symbol_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse a symbol\n");
+    print_indent(level); printf("Trying to parse a symbol\n");
 
-    fpos_t original_position, previous_position;
     char* error;
-    char c = 0;
+    ScanResult sr = { 0 };
+
+    ScannerBegin(scanner);
+
     String* symbol_text = String_new(0);
 
     if(!symbol_text) return "Unable to allocate String for symbol text";
 
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
     for(int i = 0; ; i++) {
 
-        if(fgetpos(in_file, &previous_position) != 0) {
+        if(!ScannerCheckpoint(scanner)) {
 
-            fsetpos(in_file, &original_position);
-
+            ScannerRollbackFull(scanner);
             String_cleanUp(symbol_text);
             
             return "Failed to get file position";
         }
 
-        if(fread(&c, 1, 1, in_file) != 1) break;
+        sr = ScannerGetNext(scanner);
+
+        if(sr.err) break;
 
         if(
-            (c >= 'a' && c <= 'z') ||
-            (c >= 'A' && c <= 'Z') ||
-            (i > 0 && c >= '0' && c <= '9') ||
-            (c == '_')
+            (sr.val >= 'a' && sr.val <= 'z') ||
+            (sr.val >= 'A' && sr.val <= 'Z') ||
+            (sr.val > 0 && sr.val >= '0' && sr.val <= '9') ||
+            (sr.val == '_')
         ) {
 
-            error = String_appendChar(symbol_text, c);
+            error = String_appendChar(symbol_text, sr.val);
 
             if(error != 0) {
         
-                fsetpos(in_file, &original_position);
-
+                ScannerRollbackFull(scanner);
                 String_cleanUp(symbol_text);
 
                 return error;
@@ -122,14 +135,13 @@ char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
 
         if(i == 0) {
 
-            fsetpos(in_file, &original_position);
-
+            ScannerRollbackFull(scanner);
             String_cleanUp(symbol_text);
 
             return "Symbol did not begin with a valid character";
         }
 
-        fsetpos(in_file, &previous_position);
+        ScannerRollbackLast(scanner);
 
         break;
     }
@@ -138,7 +150,7 @@ char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
 
     if(*node == 0) {
 
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         String_cleanUp(symbol_text);
 
@@ -150,70 +162,68 @@ char* Symbol_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* Operator_tryParse(FILE* in_file, ASTNode** node) {
+char* Operator_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse an operator\n");
+    print_indent(level); printf("Trying to parse an operator\n");
 
-    fpos_t original_position, before_op_read_position;
-
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    skip_whitespace(in_file);
+    ScannerBegin(scanner);
+    ScannerSkipWhitespace(scanner);
 
     ASTNode* left_expr;
 
-    char* left_error = Value_tryParse(in_file, &left_expr);
+    char* left_error = Value_tryParse(scanner, &left_expr, level + 1);
 
     if(left_error != 0) {
     
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         return left_error;
     }
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
-    char c;
+    ScanResult sr = { 0 };
 
-    if(fgetpos(in_file, &before_op_read_position) != 0) {
+    if(!ScannerCheckpoint(scanner)) {
 
         ASTNode_cleanUp(left_expr);
         
         return "Failed to get file position";
     }
 
-    if(fread(&c, 1, 1, in_file) != 1) return "Unexpected EOF attempting to read operator";
+    sr = ScannerGetNextStrict(scanner);
+
+    if(sr.err) return "Unexpected EOF attempting to read operator";
 
     ASTOperatorType op_type =
-        c == '+' ? OpAdd      :
-        c == '-' ? OpSubtract :
-        c == '*' ? OpMultiply :
-        c == '/' ? OpDivide   :
-                   OpInvalid  ;
+        sr.val == '+' ? OpAdd      :
+        sr.val == '-' ? OpSubtract :
+        sr.val == '*' ? OpMultiply :
+        sr.val == '/' ? OpDivide   :
+                        OpInvalid  ;
 
     if(op_type == OpInvalid) {
 
         //TEMP
         //printf("Invalid op '%c'\n", c);
 
-        fsetpos(in_file, &before_op_read_position);
+        ScannerRollbackLast(scanner);
 
         *node = left_expr;
 
         return 0;
     }
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
     
     ASTNode* right_expr;
 
-    char* right_error = Value_tryParse(in_file, &right_expr);
+    char* right_error = Value_tryParse(scanner, &right_expr, level + 1);
 
     if(right_error != 0) {
     
-        fsetpos(in_file, &original_position);
-
+        ScannerRollbackFull(scanner);
         ASTNode_cleanUp(left_expr);
 
         return right_error;
@@ -223,8 +233,7 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
 
     if(error != 0) {
 
-        fsetpos(in_file, &original_position);
-
+        ScannerRollbackFull(scanner);
         ASTNode_cleanUp(left_expr);
         ASTNode_cleanUp(right_expr);
 
@@ -238,42 +247,33 @@ char* Operator_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
+char* Parameter_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse a parameter\n");
-
-    fpos_t original_position;
-
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    skip_whitespace(in_file);
-
-    //TODO: actually declare a type
-    char kw_buf[4];
-    const char* var_keyword = "var";
-
-    if(fread(kw_buf, 1, 4, in_file) != 4) return "Unexpected EOF in parameter declaration";
-
-    for(int i = 0; i < 3; i++) if(kw_buf[i] != var_keyword[i]) {
+    print_indent(level); printf("Trying to parse a parameter\n");
     
-        fsetpos(in_file, &original_position);
+    ScanResult sr = { 0 };
 
+    ScannerBegin(scanner);
+    ScannerSkipWhitespace(scanner);
+
+    if(!ScannerNextIsStr(scanner, "var"))
         return "Parameter declaration did not begin with 'var' keyword";
-    }
 
-    if(kw_buf[3] > 0x20) {
+    sr = ScannerGetNextStrict(scanner);
 
-        fsetpos(in_file, &original_position);
+    if(sr.val > 0x20) {
+
+        ScannerRollbackFull(scanner);
 
         return "Parameter declaration 'var' keyword not followed by whitespace";
     }
     
     ASTNode* symbol;
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
-    char* error = Symbol_tryParse(in_file, &symbol);
+    char* error = Symbol_tryParse(scanner, &symbol, level + 1);
 
     if(error != 0) return error;
 
@@ -281,8 +281,7 @@ char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
 
     if(error != 0) {
     
-        fsetpos(in_file, &original_position);
-
+        ScannerRollbackFull(scanner);
         ASTNode_cleanUp(symbol);
 
         return "Unable to allocate space for new parameter declaration node";
@@ -293,40 +292,34 @@ char* Parameter_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
+char* ParameterList_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse a parameter list\n");
+    print_indent(level); printf("Trying to parse a parameter list\n");
 
-    fpos_t original_position;
-    char* error;
+    ScanResult sr = { 0 };
 
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+    ScannerBegin(scanner);
+    ScannerSkipWhitespace(scanner);
 
-    skip_whitespace(in_file);
-
-    char c;
-
-    if(fread(&c, 1, 1, in_file) != 1) return "Unexpected EOF starting argument list";
-
-    if(c != '(') return "Expected '(' at start of argument list";
+    if(!ScannerNextIs(scanner, '(')) return "Expected '(' at start of argument list";
 
     int paramDeclarationsCapacity = 0;
     int paramDeclarationsCount = 0;
-
+    char* error = 0;
     ASTNode** paramDeclarations = 0;
 
     while(1) {
     
         ASTNode* parameter;
 
-        error = Parameter_tryParse(in_file, &parameter);
+        error = Parameter_tryParse(scanner, &parameter, level + 1);
 
         if(error) {
 
             if(paramDeclarationsCount > 0) free(paramDeclarations);
 
-            fsetpos(in_file, &original_position);
+            ScannerRollbackFull(scanner);
 
             return error;
         }
@@ -346,7 +339,7 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
 
                 if(paramDeclarationsCount > 0) free(paramDeclarations);
 
-                fsetpos(in_file, &original_position);
+                ScannerRollbackFull(scanner);
 
                 return "Failed to allocate memory for parameter list";
             }
@@ -354,25 +347,24 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
 
         paramDeclarations[paramDeclarationsCount++] = parameter;
 
-        skip_whitespace(in_file);
+        ScannerSkipWhitespace(scanner);
+        sr = ScannerGetNextStrict(scanner);
 
-        if(fread(&c, 1, 1, in_file) != 1) {
+        if(sr.err) {
 
             if(paramDeclarationsCount > 0) free(paramDeclarations);
-
-            fsetpos(in_file, &original_position);
 
             return "Unexpected EOF in parameter list";
         }
 
-        if(c != ',') break;
+        if(sr.val != ',') break;
     }
 
-    if(c != ')') {
+    if(sr.val != ')') {
 
         if(paramDeclarationsCount > 0) free(paramDeclarations);
 
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         return "Expected a closing parenthesis at the end of parameter list";
     }
@@ -383,7 +375,7 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
 
         if(paramDeclarationsCount > 0) free(paramDeclarations);
 
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         return "Failed to allocate memory for parameter list";
     }
@@ -394,60 +386,46 @@ char* ParameterList_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
+char* Lambda_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     static int lambda_id = 0;
 
     //TEMP
-    //printf("Trying to parse a lambda\n");
+    print_indent(level); printf("Trying to parse a lambda\n");
 
     ASTNode* parameterList;
-    fpos_t original_position;
 
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
+    ScannerBegin(scanner);
 
-    char* pl_error = ParameterList_tryParse(in_file, &parameterList);
+    char* pl_error = ParameterList_tryParse(scanner, &parameterList, level + 1);
 
     if(pl_error != 0) {
     
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         return pl_error;
     }
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
-    char arrow_buf[2];
-
-    if(fread(arrow_buf, 1, 2, in_file) != 2) {
+    if(!ScannerNextIsStr(scanner, "=>")) {
 
         ASTNode_cleanUp(parameterList);
-
-        fsetpos(in_file, &original_position);
-
-        return "Unexpected EOF after lambda expression argument list";
-    }
-
-    if(arrow_buf[0] != '=' || arrow_buf[1] != '>')  {
-
-        ASTNode_cleanUp(parameterList);
-
-        fsetpos(in_file, &original_position);
 
         return "Expected '=>' following lambda argument list";
     }
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
     ASTNode* expression;
 
-    char* expression_error = Expression_tryParse(in_file, &expression);
+    char* expression_error = Expression_tryParse(scanner, &expression, level + 1);
 
     if(expression_error != 0)  {
 
         ASTNode_cleanUp(parameterList);
 
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         return expression_error;
     }
@@ -459,7 +437,7 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
         ASTNode_cleanUp(parameterList);
         ASTNode_cleanUp(expression);
 
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         return expression_error;
     }
@@ -471,91 +449,87 @@ char* Lambda_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
+char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    char c;
+    //TEMP
+    print_indent(level); printf("Trying to parse an invocation\n");
+
+    ScanResult sr = { 0 };
     char* error;
     VoidList child_list;
-    fpos_t original_position;
     ASTNode* symbol;
+
+    ScannerBegin(scanner);
 
     VoidList_init(&child_list);
 
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    error = Symbol_tryParse(in_file, &symbol);
+    error = Symbol_tryParse(scanner, &symbol, level + 1);
 
     if(error != 0) {
 
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
-	return error;
+    	return error;
     }
 
     if((error = VoidList_add(&child_list, symbol)) != 0) {
         
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
 
         ASTNode_cleanUp(symbol);
 
         return error;
     }
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
-    if(fread(&c, 1, 1, in_file) != 1) return "Unexpected EOF attempting to read invocation";
-
-    if(c != '(') {
-
-        fsetpos(in_file, &original_position);
-
-	return "Expected opening paren following symbol in invocation";
-    }
+    if(!ScannerNextIs(scanner, '(')) 
+    	return "Expected opening paren following symbol in invocation";
 
     int expect_next = 0;
     ASTNode* arg_expression;
 
     while(1) {
 
-	skip_whitespace(in_file);
+    	ScannerSkipWhitespace(scanner);
 
-	error = Expression_tryParse(in_file, &arg_expression);
+    	error = Expression_tryParse(scanner, &arg_expression, level + 1);
 
-	if(error != 0 && expect_next) {
+    	if(error != 0 && expect_next) {
 
             VoidList_cleanUp(&child_list);
-	    ASTNode_cleanUp(symbol);
+    	    ASTNode_cleanUp(symbol);
 
-	    return "Expected argument following comma in invocation";
-	}
+    	    return "Expected argument following comma in invocation";
+    	}
 
-	if(error == 0) {
+    	if(error == 0) {
 
             error = VoidList_add(&child_list, arg_expression);
 
-	    if(error != 0) {
+	        if(error != 0) {
 
-		VoidList_cleanUp(&child_list);
-		ASTNode_cleanUp(symbol);
+                VoidList_cleanUp(&child_list);
+                ASTNode_cleanUp(symbol);
 
-		return error;
-	    }
+                return error;
+	        }
         }
 
-	skip_whitespace(in_file);
+    	ScannerSkipWhitespace(scanner);
+        sr = ScannerGetNextStrict(scanner);
     
-        if(fread(&c, 1, 1, in_file) != 1) {
+        if(sr.err) {
 
-	    //TODO: We should clean up the individual nodes as well
-	    VoidList_cleanUp(&child_list);
-	    ASTNode_cleanUp(symbol);
+            //TODO: We should clean up the individual nodes as well
+            VoidList_cleanUp(&child_list);
+            ASTNode_cleanUp(symbol);
 
-	    return "Unexpected EOF reading invocation param list";
-	}
+    	    return "Unexpected EOF reading invocation param list";
+	    }
 
-	if(c == ')') break;
-
-        if(c == ',') expect_next = 1;
+        if(sr.val == ')') break;
+        if(sr.val == ',') expect_next = 1;
     }
 
     error = ASTNode_create(node, Invocation, 0, 0);
@@ -563,9 +537,9 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
     if(error != 0) {
     
         VoidList_cleanUp(&child_list);
-	ASTNode_cleanUp(symbol);
+    	ASTNode_cleanUp(symbol);
         
-	return "Failed to allocate memory for an invocation node";
+    	return "Failed to allocate memory for an invocation node";
     }
 
     (*node)->childCount = child_list.count;
@@ -574,84 +548,71 @@ char* Invocation_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* Expression_tryParse(FILE* in_file, ASTNode** node) {
+char* Expression_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse an expression\n");
+    print_indent(level); printf("Trying to parse an expression\n");
 
     char* error;
     
-    if(Lambda_tryParse(in_file, node) == 0) return 0;
-    if((error = Operator_tryParse(in_file, node)) == 0) return 0;
-    if((error = Invocation_tryParse(in_file, node)) == 0) return 0;
+    if(Lambda_tryParse(scanner, node, level + 1) == 0) return 0;
+    if((error = Operator_tryParse(scanner, node, level + 1)) == 0) return 0;
+    if((error = Invocation_tryParse(scanner, node, level + 1)) == 0) return 0;
 
     return error;
 }
 
-char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
+char* Declaration_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse a declaration\n");
-
-    fpos_t original_position;
-
-    if(fgetpos(in_file, &original_position) != 0) return "Failed to get file position";
-
-    skip_whitespace(in_file);
-
-    char kw_buf[4];
-    const char* var_keyword = "var";
-
-    if(fread(kw_buf, 1, 4, in_file) != 4) return "Unexpected EOF in variable declaration";
-
-    for(int i = 0; i < 3; i++) if(kw_buf[i] != var_keyword[i]) {
+    print_indent(level); printf("Trying to parse a declaration\n");
     
-        fsetpos(in_file, &original_position);
+    ScanResult sr = { 0 };
 
+    ScannerBegin(scanner);
+    ScannerSkipWhitespace(scanner);
+
+    if(!ScannerNextIsStr(scanner, "var"))
         return "Declaration statement did not begin with 'var' keyword";
-    }
 
-    if(kw_buf[3] > 0x20) {
+    sr = ScannerGetNextStrict(scanner);
 
-        fsetpos(in_file, &original_position);
-
+    if(sr.err || sr.val > 0x20) 
         return "Declaration statement did not begin with 'var' keyword";
-    }
     
     ASTNode* lvalue;
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
-    char* error = Symbol_tryParse(in_file, &lvalue);
+    char* error = Symbol_tryParse(scanner, &lvalue, level + 1);
 
     if(error != 0) return error;
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
     char eq;
 
     ASTNode* rvalue = 0;
 
-    if(fread(&eq, 1, 1, in_file) == 1 && eq == '=') {
+    sr = ScannerGetNext(scanner);
 
-        error = Expression_tryParse(in_file, &rvalue);
+    if(!sr.err && sr.val == '=') {
+
+        error = Expression_tryParse(scanner, &rvalue, level + 1);
 
         if(error != 0) {
 
-            fsetpos(in_file, &original_position);
+            ScannerRollbackFull(scanner);
             ASTNode_cleanUp(lvalue);
 
             return error;
         }
     }
 
-    skip_whitespace(in_file);
+    ScannerSkipWhitespace(scanner);
 
-    char sc;
+    if(!ScannerNextIs(scanner, ';')) {
 
-    if(fread(&sc, 1, 1, in_file) != 1 || sc != ';') {
-
-        fsetpos(in_file, &original_position);
         ASTNode_cleanUp(lvalue);
 
         if(rvalue != 0) ASTNode_cleanUp(rvalue);
@@ -663,7 +624,7 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
 
     if(error != 0) {
     
-        fsetpos(in_file, &original_position);
+        ScannerRollbackFull(scanner);
         ASTNode_cleanUp(lvalue);
         if(rvalue != 0) ASTNode_cleanUp(rvalue);
 
@@ -676,25 +637,43 @@ char* Declaration_tryParse(FILE* in_file, ASTNode** node) {
     return 0;
 }
 
-char* Statement_tryParse(FILE* in_file, ASTNode** node) {
+char* ExpressionStatement_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse a statement\n");
-
-    skip_whitespace(in_file);
+    print_indent(level); printf("Trying to parse an expression statement\n");
 
     char* error;
 
-    if((error = Declaration_tryParse(in_file, node)) == 0) return 0;
-    if((error = Expression_tryParse(in_file, node)) == 0) return 0;
+    ScannerBegin(scanner);
+
+    if((error = Expression_tryParse(scanner, node, level + 1)) != 0) return error;
+
+    ScannerSkipWhitespace(scanner);
+
+    if(!ScannerNextIs(scanner, ';')) return "Expression statement did not end in ';'\n";
+
+    return 0;
+}
+
+char* Statement_tryParse(Scanner scanner, ASTNode** node, int level) {
+
+    //TEMP
+    print_indent(level); printf("Trying to parse a statement\n");
+
+    ScannerSkipWhitespace(scanner);
+
+    char* error;
+
+    if((error = Declaration_tryParse(scanner, node, level + 1)) == 0) return 0;
+    if((error = ExpressionStatement_tryParse(scanner, node, level + 1)) == 0) return 0;
 
     return error;
 }
 
-char* Module_tryParse(FILE* in_file, ASTNode** node) {
+char* Module_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    //printf("Trying to parse a module\n");
+    print_indent(level); printf("Trying to parse a module\n");
 
     int statementCapacity = 0;
     char* inner_error = 0;
@@ -704,7 +683,7 @@ char* Module_tryParse(FILE* in_file, ASTNode** node) {
 
     if(inner_error != 0) return "Unable to allocate memory for a module node";
 
-    while((!feof(in_file)) && ((inner_error = Statement_tryParse(in_file, &new_statement)) == 0)) {
+    while((!ScannerAtEnd(scanner)) && ((inner_error = Statement_tryParse(scanner, &new_statement, level + 1)) == 0)) {
         
         if(statementCapacity < ((*node)->childCount + 1)) {
 
@@ -724,7 +703,7 @@ char* Module_tryParse(FILE* in_file, ASTNode** node) {
 
         (*node)->children[(*node)->childCount++] = new_statement;
 
-        skip_whitespace(in_file);
+        ScannerSkipWhitespace(scanner);
     }
 
     return inner_error;

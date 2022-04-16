@@ -1,0 +1,38 @@
+#ifndef SCANNER_H
+#define SCANNER_H
+
+#include <stdio.h>
+
+typedef FILE* Scanner;
+
+char _Scanner_GetNextImpl(Scanner s, int* e);
+
+#define ScannerSet(s) \
+    if(fgetpos((s), &original_pos) != 0) return "Failed to get file position"
+
+#define ScannerBegin(s) \
+    int S_err; \
+    char S_c = 0; \
+    filepos_t S_original_pos; \
+    ScannerSet(s)
+
+#define ScannerRollback(s) \
+    fsetpos(in_file, &S_original_pos)
+
+#define ScannerAssertNext(s, c, t, a) \
+    if(fread(&S_c, 1, 1, (s)) != 1) { \
+        ScannerRollback(s); \
+        return "Encountered unexpected EOF in " (t); \
+    } \
+    if(S_c != (c)) { \
+        ScannerRollback(s); \
+        return (t) " " (a); \
+    }
+
+#define ScannerGetNextStrict(s, t) \
+    _Scanner_GetNextImpl((s), &S_err); \
+    if(S_err != 0) { \
+        ScannerRollback(s); \
+        return "Encountered end of file when parsing a " (t); \
+    }
+
