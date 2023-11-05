@@ -1,17 +1,56 @@
 #include "scanner.h"
+#include "debug.h"
+
+int _Scanner_peekMatch(Scanner s, char c) {
+
+    fpos_t initial;
+    char actual;
+
+    fgetpos(s, &initial);
+
+    if(fread(&actual, 1, 1, s) != 1) return 0;
+
+    int result = actual == c;
+
+    fsetpos(s, &initial);
+
+    return result;
+}
 
 ScanResult _Scanner_getc(Scanner s) {
 
+    ScannerDeclareHiddenLocals;
+    ScannerCheckpoint(s);
     ScanResult sr = { 0 };
 
     sr.err = fread(&(sr.val), 1, 1, s) != 1;
 
     if(sr.err) {
 
-        //printf("Scanner: EOF\n");
+        DEBUG_PRINT("Scanner: EOF\n");
     } else {
 
-        //printf("Scanner: '%c'\n", sr.val);
+        //Try to consume a comment
+        while(1) {
+
+            if(sr.val != '/' || !_Scanner_peekMatch(s, '/')) break;
+
+            while(1) {
+
+                sr.err = fread(&(sr.val), 1, 1, s) != 1;
+                
+                if(sr.err) return sr;
+
+                if(sr.val == '\n') {
+
+                    sr.err = fread(&(sr.val), 1, 1, s) != 1;
+
+                    break;
+                }
+            }
+        }
+
+        DEBUG_PRINTF("Scanner: '%c'\n", sr.val);
     }
 
     return sr;

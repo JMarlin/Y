@@ -1,6 +1,7 @@
 #include "parse.h"
 #include "helpers.h"
 #include "scanner.h"
+#include "debug.h"
 #include <stdlib.h>
 
 int characterIsDecimalNumeric(char c) {
@@ -15,8 +16,7 @@ int characterToDecimalDigit(char c) {
 
 char* NumberLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a number\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a number\n");
 
     ScannerBegin(scanner);
 
@@ -65,8 +65,7 @@ char* NumberLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Value_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a value\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a value\n");
 
     char* error;
 
@@ -79,8 +78,7 @@ char* Value_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* StringLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a string literal\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a string literal\n");
 
     ScannerBegin(scanner);
 
@@ -144,8 +142,7 @@ char* StringLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Symbol_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a symbol\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a symbol\n");
 
     char* error;
     ScanResult sr = { 0 };
@@ -223,8 +220,7 @@ char* Symbol_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Operator_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse an operator\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse an operator\n");
 
     ScannerBegin(scanner);
     ScannerSkipWhitespace(scanner);
@@ -264,8 +260,7 @@ char* Operator_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     if(op_type == OpInvalid) {
 
-        //TEMP
-        //printf("Invalid op '%c'\n", sr.val);
+                //printf("Invalid op '%c'\n", sr.val);
 
         ScannerRollbackLast(scanner);
 
@@ -308,8 +303,7 @@ char* Operator_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Parameter_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a parameter\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a parameter\n");
     
     ScanResult sr = { 0 };
 
@@ -353,8 +347,7 @@ char* Parameter_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* ParameterList_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a parameter list\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a parameter list\n");
 
     ScanResult sr = { 0 };
 
@@ -389,7 +382,8 @@ char* ParameterList_tryParse(Scanner scanner, ASTNode** node, int level) {
                 ? 1
                 : (2 * paramDeclarationsCapacity);
     
-            ASTNode** newParametersPtr = (ASTNode**)malloc(sizeof(ASTNode*) * new_size );
+            paramDeclarationsCapacity = new_size;
+            ASTNode** newParametersPtr = (ASTNode**)realloc(paramDeclarations, sizeof(ASTNode*) * paramDeclarationsCapacity );
 
             if(newParametersPtr != 0) {
 
@@ -449,8 +443,7 @@ char* Lambda_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     static int lambda_id = 0;
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a lambda\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a lambda\n");
 
     ASTNode* parameterList;
 
@@ -510,8 +503,7 @@ char* Lambda_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* ArgumentList_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse an argument list\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse an argument list\n");
 
     VoidList child_list;
 
@@ -588,8 +580,7 @@ char* ArgumentList_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse an invocation\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse an invocation\n");
 
     ScanResult sr = { 0 };
     char* error;
@@ -638,8 +629,7 @@ char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Expression_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse an expression\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse an expression\n");
 
     char* error;
     
@@ -652,8 +642,7 @@ char* Expression_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Declaration_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a declaration\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a declaration\n");
     
     ScanResult sr = { 0 };
 
@@ -727,8 +716,7 @@ char* Declaration_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* ExpressionStatement_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse an expression statement\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse an expression statement\n");
 
     char* error;
 
@@ -745,8 +733,7 @@ char* ExpressionStatement_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Statement_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a statement\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a statement\n");
 
     ScannerSkipWhitespace(scanner);
 
@@ -760,8 +747,7 @@ char* Statement_tryParse(Scanner scanner, ASTNode** node, int level) {
 
 char* Module_tryParse(Scanner scanner, ASTNode** node, int level) {
 
-    //TEMP
-    //print_indent(level); printf("Trying to parse a module\n");
+    DEBUG_INDENT_PRINT(level, "Trying to parse a module\n");
 
     int statementCapacity = 0;
     char* inner_error = 0;

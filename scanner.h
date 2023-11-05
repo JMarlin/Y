@@ -20,10 +20,13 @@ void ScannerSkipWhitespace(Scanner s);
 #define ScannerCheckpoint(s) \
     (fgetpos((s), &S_last_pos) == 0)
 
-#define ScannerBegin(s) \
+#define ScannerDeclareHiddenLocals \
     fpos_t S_original_pos; \
     fpos_t S_last_pos; \
-    char S_tmp_c; \
+    char S_tmp_c; 
+
+#define ScannerBegin(s) \
+    ScannerDeclareHiddenLocals \
     if(fgetpos((s), &S_original_pos)) return "Failed to get file position"; \
     S_last_pos = S_original_pos
 
