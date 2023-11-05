@@ -120,9 +120,12 @@ char* StringLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 
         ignore_quote = 0;
 
+#warning TODO: Implement real escape character handling
+/*
 	    if(sr.val == '\\')
             ignore_quote = 1;
         else
+*/
             String_appendChar(string, sr.val);
     }
 

@@ -1,14 +1,18 @@
-typedef int (*Lambda0Type)(int, int);
-int Lambda0(int a, int b) { return a + b; }
-typedef int (*Lambda1Type)(int);
-int Lambda1(int i) { return i + 1; }
+typedef int (*Lambda0Type)(int);
+typedef int (*Lambda1Type)(int, int);
+
+Lambda0Type inc;
+Lambda1Type add;
+
+
+int Lambda0(int i) { return add(i, 1); }
+int Lambda1(int a, int b) { return a + b; }
 
 #include <stdio.h>
 int main(int argc, char* argv[]) {
-Lambda0Type add = Lambda0;
-Lambda1Type inc = Lambda1;
+inc = Lambda0;
+add = Lambda1;
 
 
-
-;;printf("add(1, 2) = %dn", add(1, 2));printf("inc(2) = %dn", inc(2));
+;;printf("add(inc(1), 2) = %d\n", add(inc(1), 2));
 }

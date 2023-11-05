@@ -15,21 +15,28 @@ TemplateConfig CTemplateConfig = {
     "", //StringLiteral
     "", //NumberLiteral
     },
-    15,
+    17,
     {
         {
             "module",
-            "{{er`{{c`pred`{{t`lambda_declaration`}}`}}`}}\n"
+            "{{er`{{c`pred`{{t`lambda_type_declaration`}}`}}`}}\n"
+            "{{tc`global_declarations`}}\n"
+            "{{er`{{c`pred`{{t`lambda_body`}}`}}`}}\n"
             "#include <stdio.h>\n"
             "int main(int argc, char* argv[]) {\n"
-            "{{tc`global_declarations`}}\n"
+            "{{tc`global_assignments`}}\n"
             "{{tc`global_expressions`}}\n"
             "}\n", 0, 
             ASTNode_IsLambda
         }, 
         {
+            "global_assignments",
+            "{{e`{{c`pred`{{sc0a0}} = Lambda{{ic1a0}};`}}\n`}}", 0,
+            ASTNode_IsDeclaration
+        }, 
+        {
             "global_declarations",
-            "{{e`{{c`pred`Lambda{{ic1a0}}Type {{sc0a0}} = Lambda{{ic1a0}};`}}\n`}}", 0,
+            "{{e`{{c`pred`Lambda{{ic1a0}}Type {{sc0a0}};`}}\n`}}", 0,
             ASTNode_IsDeclaration
         }, 
         {
@@ -37,9 +44,12 @@ TemplateConfig CTemplateConfig = {
             "{{e`{{t`expression`}};`}}", 0, 0
         },
         {
-            "lambda_declaration",
-            "typedef int (*Lambda{{ia0}}Type)({{ec0`{{c`!first`, `}}int`}});\n"
+            "lambda_body",
             "int Lambda{{ia0}}({{ec0`{{c`!first`, `}}int {{sc0a0}}`}}) { return {{tc1`expression`}}; }\n", 0, 0
+        },
+        {
+            "lambda_type_declaration",
+            "typedef int (*Lambda{{ia0}}Type)({{ec0`{{c`!first`, `}}int`}});\n", 0, 0
         },
         {
             "expression",

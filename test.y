@@ -1,5 +1,4 @@
+var inc = (var i) => add(i, 1);
 var add = (var a, var b) => a + b;
-var inc = (var i) => i + 1;
 
-printf("add(1, 2) = %d\\n", add(1, 2));
-printf("inc(2) = %d\\n", inc(2));
+printf("add(inc(1), 2) = %d\n", add(inc(1), 2));
