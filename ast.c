@@ -18,7 +18,11 @@ const ASTNodeMethods ASTNodeMethodsFor[] = {
     AN_METHODS_STRUCT(ParameterList),
     AN_METHODS_STRUCT(Operator),
     AN_METHODS_STRUCT(Lambda),
-    AN_METHODS_STRUCT(Symbol)
+    AN_METHODS_STRUCT(Symbol),
+    AN_METHODS_STRUCT(Invocation),
+    AN_METHODS_STRUCT(ArgumentList),
+    AN_METHODS_STRUCT(StringLiteral),
+    AN_METHODS_STRUCT(NumberLiteral)
 };
 
 char* ASTNode_create(ASTNode** node, ASTNodeType type, int childCount, int attributeCount) {
@@ -119,6 +123,21 @@ int ASTNode_IsOperator(ASTNode* node) {
 int ASTNode_IsSymbol(ASTNode* node) {
 
     return node->type == Symbol;
+}
+
+int ASTNode_IsStringLiteral(ASTNode* node) {
+
+    return node->type == StringLiteral;
+}
+
+int ASTNode_IsNumberLiteral(ASTNode* node) {
+
+    return node->type == NumberLiteral;
+}
+
+int ASTNode_IsInvocation(ASTNode* node) {
+
+    return node->type == Invocation;
 }
 
 int ASTOperatorNode_OperatorIsAdd(ASTNode* node) {
@@ -322,6 +341,27 @@ void ASTSymbolNode_cleanUp(ASTNode* node) {
     String_cleanUp((String*)node->SN_TEXT);
 }
 
+void ASTStringLiteralNode_print(ASTNode* node, int depth) {
+
+    String* text = (String*)node->SLN_STRING;
+
+    print_indent(depth); printf("- String literal: %.*s\n", text->length, text->data);
+}
+
+void ASTStringLiteralNode_cleanUp(ASTNode* node) {
+
+    String_cleanUp((String*)node->SN_TEXT);
+}
+
+void ASTNumberLiteralNode_print(ASTNode* node, int depth) {
+
+    long int value = (long int)node->NLN_NUMBER;
+
+    print_indent(depth); printf("- Number literal: %ld\n", value);
+}
+
+void ASTNumberLiteralNode_cleanUp(ASTNode* node) { }
+
 void ASTOperatorNode_print(ASTNode* node, int depth) {
 
     print_indent(depth); printf("- Operator\n");
@@ -348,20 +388,6 @@ void ASTLambdaNode_print(ASTNode* node, int depth) {
 
 void ASTLambdaNode_cleanUp(ASTNode* node) { }
 
-void ASTStringLiteralNode_print(ASTNode* node, int depth) {
-
-    String* string = node->SLN_STRING;
-    
-    print_indent(depth); printf("- String Literal: '%.*s'\n", string->length, string->data);
-}
-
-void ASTStringLiteralNode_cleanUp(ASTNode* node) {
-
-    String* string = node->SLN_STRING;
-
-    String_cleanUp(string);
-}
-
 void ASTInvocationNode_print(ASTNode* node, int depth) {
 
     print_indent(depth); printf("- Invocation:\n");
@@ -369,11 +395,22 @@ void ASTInvocationNode_print(ASTNode* node, int depth) {
 
     ASTNode_print(node->IN_SYMBOL, depth + 1);
 
-    for(int i = 0; i < IN_ARGCOUNT(node); i++) {
-	
-        print_indent(depth); printf("  Argument %i:\n", i);
+    print_indent(depth); printf("  Arguments:\n");
 
-	ASTNode_print(node->IN_ARG(i), depth + 1);
+    ASTNode_print(node->IN_ARGS, depth + 1);
+}
+
+void ASTInvocationNode_cleanUp(ASTNode* node) { }
+
+void ASTArgumentListNode_print(ASTNode* node, int depth) {
+
+    print_indent(depth); printf("- Argument List\n");
+
+    for(int i = 0; i < node->childCount; i++) {
+
+        ASTNode_print(node->children[i], depth + 1);
     }
 }
+
+void ASTArgumentListNode_cleanUp(ASTNode* node) { }
 

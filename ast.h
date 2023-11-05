@@ -26,7 +26,9 @@ typedef enum {
     Lambda,
     Symbol,
     Invocation,
+    ArgumentList,
     StringLiteral,
+    NumberLiteral,
     ASTNodeTypeCount
 } ASTNodeType;
 
@@ -60,7 +62,9 @@ AN_METHODS_DECL(Operator);
 AN_METHODS_DECL(Lambda);
 AN_METHODS_DECL(Symbol);
 AN_METHODS_DECL(Invocation);
+AN_METHODS_DECL(ArgumentList);
 AN_METHODS_DECL(StringLiteral);
+AN_METHODS_DECL(NumberLiteral);
 
 #define AN_METHODS_STRUCT(n) \
     (ASTNodeMethods){ \
@@ -98,10 +102,11 @@ extern const char* OperatorString[];
 #define AN_EXPR children[1]
 
 #define IN_SYMBOL children[0]
-#define IN_ARG(n) children[(n) + 1]
-#define IN_ARGCOUNT(i) ((i)->childCount - 1)
+#define IN_ARGS children[1]
 
 #define SLN_STRING attributes[0]
+
+#define NLN_NUMBER attributes[0]
 
 char* ASTNode_create(ASTNode** node, ASTNodeType type, int childCount, int attributeCount); 
 
@@ -112,12 +117,12 @@ void ASTNode_print(ASTNode* node, int depth);
 char* ASTNode_forAll(ASTNode* root, ASTNodeVisitor visit, void* args); 
 
 int ASTNode_IsLambda(ASTNode* node); 
-
 int ASTNode_IsDeclaration(ASTNode* node);
-
 int ASTNode_IsOperator(ASTNode* node);
-
 int ASTNode_IsSymbol(ASTNode* node);
+int ASTNode_IsStringLiteral(ASTNode* node);
+int ASTNode_IsNumberLiteral(ASTNode* node);
+int ASTNode_IsInvocation(ASTNode* node);
 
 int ASTOperatorNode_OperatorIsAdd(ASTNode* node);
 
@@ -133,35 +138,39 @@ char* ASTNode_getChildByPath(ASTNode* in_node, String* path, String** rest_str,
 char* ASTNode_getAttributeByPath(ASTNode* node, String* path, void** attribute); 
 
 char* ASTNode_renderTemplate(ASTNode* node, struct TemplateConfig_s* config, String** out_string); 
-
 char* ASTNode_writeOut(FILE* out_file, struct TemplateConfig_s* config, ASTNode* node);
 
 void ASTModuleNode_print(ASTNode* node, int depth);
-
 void ASTModuleNode_cleanUp(ASTNode* node);
 
 void ASTDeclarationNode_print(ASTNode* node, int depth);
-
 void ASTDeclarationNode_cleanUp(ASTNode* node);
 
 void ASTParameterNode_print(ASTNode* node, int depth);
-
 void ASTParameterNode_cleanUp(ASTNode* node);
 
 void ASTParameterListNode_print(ASTNode* node, int depth);
-
 void ASTParameterListNode_cleanUp(ASTNode* node);
 
 void ASTSymbolNode_print(ASTNode* node, int depth);
-
 void ASTSymbolNode_cleanUp(ASTNode* node);
 
 void ASTOperatorNode_print(ASTNode* node, int depth);
-
 void ASTOperatorNode_cleanUp(ASTNode* node);
 
 void ASTLambdaNode_print(ASTNode* node, int depth);
-
 void ASTLambdaNode_cleanUp(ASTNode* node);
+
+void ASTInvocationNode_print(ASTNode* node, int depth);
+void ASTInvocationNode_cleanUp(ASTNode* node);
+
+void ASTArgumentListNode_print(ASTNode* node, int depth);
+void ASTArgumentListNode_cleanUp(ASTNode* node);
+
+void ASTStringLiteralNode_print(ASTNode* node, int depth);
+void ASTStringLiteralNode_cleanUp(ASTNode* node);
+
+void ASTNumberLiteralNode_print(ASTNode* node, int depth);
+void ASTNumberLiteralNode_cleanUp(ASTNode* node);
 
 #endif

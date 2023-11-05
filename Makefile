@@ -1,5 +1,11 @@
 all: yc
 
+ytest: out.c
+	gcc -o ytest out.c
+
+out.c: yc test.y
+	./yc test.y
+
 yc: main.o scanner.o helpers.o ast.o parse.o template.o string.o voidlist.o
 	gcc -o yc main.o scanner.o helpers.o ast.o parse.o template.o string.o voidlist.o -g
 

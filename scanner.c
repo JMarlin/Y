@@ -8,10 +8,10 @@ ScanResult _Scanner_getc(Scanner s) {
 
     if(sr.err) {
 
-        printf("Scanner: EOF\n");
+        //printf("Scanner: EOF\n");
     } else {
 
-        printf("Scanner: '%c'\n", sr.val);
+        //printf("Scanner: '%c'\n", sr.val);
     }
 
     return sr;

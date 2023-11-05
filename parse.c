@@ -3,13 +3,74 @@
 #include "scanner.h"
 #include <stdlib.h>
 
+int characterIsDecimalNumeric(char c) {
+
+    return c >= '0' && c <= '9';
+}
+
+int characterToDecimalDigit(char c) {
+
+    return c - '0';
+}
+
+char* NumberLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
+
+    //TEMP
+    //print_indent(level); printf("Trying to parse a number\n");
+
+    ScannerBegin(scanner);
+
+    char* error;
+    long int value = 0;
+    ScanResult sr = { 0 };
+
+    ScannerSkipWhitespace(scanner);
+
+    int i;
+    for(i = 0; ; i++) {
+
+        if(!ScannerCheckpoint(scanner)) {
+
+            ScannerRollbackFull(scanner);
+            
+            return "Failed to get file position";
+        }
+
+        sr = ScannerGetNext(scanner);
+        if(sr.err) return "Encountered end of file inside of number";
+        if(!characterIsDecimalNumeric(sr.val)) break;
+        value = value * 10 + characterToDecimalDigit(sr.val);
+    }
+
+    if(i == 0) {
+
+        ScannerRollbackLast(scanner);
+        
+        return "Number had no digits";
+    }
+
+    if((error = ASTNode_create(node, NumberLiteral, 0, 1)) != 0) {
+
+        ScannerRollbackFull(scanner);
+
+        return "Failed to allocate space for a number literal";
+    }
+
+    (*node)->NLN_NUMBER = (void*)value;
+
+    ScannerRollbackLast(scanner);
+
+    return 0;
+}
+
 char* Value_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a value\n");
+    //print_indent(level); printf("Trying to parse a value\n");
 
     char* error;
 
+    if(NumberLiteral_tryParse(scanner, node, level + 1) == 0) return 0;
     if(StringLiteral_tryParse(scanner, node, level + 1) == 0) return 0;
     if((error = Symbol_tryParse(scanner, node, level + 1)) == 0) return 0;
 
@@ -19,7 +80,7 @@ char* Value_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* StringLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a string literal\n");
+    //print_indent(level); printf("Trying to parse a string literal\n");
 
     ScannerBegin(scanner);
 
@@ -54,20 +115,15 @@ char* StringLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
             return "Encountered end of file inside of string";
         }
 
-	    if(sr.val == '"') {
+	    if(sr.val == '"' && !ignore_quote)
+            break;
 
-            if(ignore_quote) {
+        ignore_quote = 0;
 
-		        ignore_quote = 0;
-	        } else {
-
-                break;
-	        }
-        }
-
-	if(sr.val == '\\') ignore_quote = 1;
-
-        String_appendChar(string, sr.val);
+	    if(sr.val == '\\')
+            ignore_quote = 1;
+        else
+            String_appendChar(string, sr.val);
     }
 
     if((error = ASTNode_create(node, StringLiteral, 0, 1)) != 0) {
@@ -86,7 +142,7 @@ char* StringLiteral_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* Symbol_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a symbol\n");
+    //print_indent(level); printf("Trying to parse a symbol\n");
 
     char* error;
     ScanResult sr = { 0 };
@@ -116,7 +172,7 @@ char* Symbol_tryParse(Scanner scanner, ASTNode** node, int level) {
         if(
             (sr.val >= 'a' && sr.val <= 'z') ||
             (sr.val >= 'A' && sr.val <= 'Z') ||
-            (sr.val > 0 && sr.val >= '0' && sr.val <= '9') ||
+            (!!i && (sr.val > 0 && sr.val >= '0' && sr.val <= '9')) ||
             (sr.val == '_')
         ) {
 
@@ -165,7 +221,7 @@ char* Symbol_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* Operator_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse an operator\n");
+    //print_indent(level); printf("Trying to parse an operator\n");
 
     ScannerBegin(scanner);
     ScannerSkipWhitespace(scanner);
@@ -206,7 +262,7 @@ char* Operator_tryParse(Scanner scanner, ASTNode** node, int level) {
     if(op_type == OpInvalid) {
 
         //TEMP
-        //printf("Invalid op '%c'\n", c);
+        //printf("Invalid op '%c'\n", sr.val);
 
         ScannerRollbackLast(scanner);
 
@@ -250,7 +306,7 @@ char* Operator_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* Parameter_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a parameter\n");
+    //print_indent(level); printf("Trying to parse a parameter\n");
     
     ScanResult sr = { 0 };
 
@@ -295,14 +351,14 @@ char* Parameter_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* ParameterList_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a parameter list\n");
+    //print_indent(level); printf("Trying to parse a parameter list\n");
 
     ScanResult sr = { 0 };
 
     ScannerBegin(scanner);
     ScannerSkipWhitespace(scanner);
 
-    if(!ScannerNextIs(scanner, '(')) return "Expected '(' at start of argument list";
+    if(!ScannerNextIs(scanner, '(')) return "Expected '(' at start of parameter list";
 
     int paramDeclarationsCapacity = 0;
     int paramDeclarationsCount = 0;
@@ -391,7 +447,7 @@ char* Lambda_tryParse(Scanner scanner, ASTNode** node, int level) {
     static int lambda_id = 0;
 
     //TEMP
-    print_indent(level); printf("Trying to parse a lambda\n");
+    //print_indent(level); printf("Trying to parse a lambda\n");
 
     ASTNode* parameterList;
 
@@ -412,7 +468,7 @@ char* Lambda_tryParse(Scanner scanner, ASTNode** node, int level) {
 
         ASTNode_cleanUp(parameterList);
 
-        return "Expected '=>' following lambda argument list";
+        return "Expected '=>' following lambda parameter list";
     }
 
     ScannerSkipWhitespace(scanner);
@@ -449,45 +505,27 @@ char* Lambda_tryParse(Scanner scanner, ASTNode** node, int level) {
     return 0;
 }
 
-char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
+char* ArgumentList_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse an invocation\n");
+    //print_indent(level); printf("Trying to parse an argument list\n");
 
-    ScanResult sr = { 0 };
-    char* error;
     VoidList child_list;
-    ASTNode* symbol;
 
     ScannerBegin(scanner);
-
     VoidList_init(&child_list);
 
-    error = Symbol_tryParse(scanner, &symbol, level + 1);
-
-    if(error != 0) {
-
-        ScannerRollbackFull(scanner);
-
-    	return error;
-    }
-
-    if((error = VoidList_add(&child_list, symbol)) != 0) {
-        
-        ScannerRollbackFull(scanner);
-
-        ASTNode_cleanUp(symbol);
-
-        return error;
-    }
-
-    ScannerSkipWhitespace(scanner);
-
-    if(!ScannerNextIs(scanner, '(')) 
-    	return "Expected opening paren following symbol in invocation";
-
+    ScanResult sr = { 0 };
     int expect_next = 0;
+    char* error;
     ASTNode* arg_expression;
+
+    if(!ScannerNextIs(scanner, '(')) {
+
+        ScannerRollbackFull(scanner);
+
+    	return "Argument list did not begin with an opening paren";
+    }
 
     while(1) {
 
@@ -498,9 +536,8 @@ char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
     	if(error != 0 && expect_next) {
 
             VoidList_cleanUp(&child_list);
-    	    ASTNode_cleanUp(symbol);
 
-    	    return "Expected argument following comma in invocation";
+    	    return "Expected argument following comma in argument list";
     	}
 
     	if(error == 0) {
@@ -510,7 +547,6 @@ char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
 	        if(error != 0) {
 
                 VoidList_cleanUp(&child_list);
-                ASTNode_cleanUp(symbol);
 
                 return error;
 	        }
@@ -523,23 +559,22 @@ char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
 
             //TODO: We should clean up the individual nodes as well
             VoidList_cleanUp(&child_list);
-            ASTNode_cleanUp(symbol);
 
-    	    return "Unexpected EOF reading invocation param list";
+    	    return "Unexpected EOF reading argument list";
 	    }
 
         if(sr.val == ')') break;
         if(sr.val == ',') expect_next = 1;
     }
 
-    error = ASTNode_create(node, Invocation, 0, 0);
+    error = ASTNode_create(node, ArgumentList, 0, 0);
 
     if(error != 0) {
     
         VoidList_cleanUp(&child_list);
-    	ASTNode_cleanUp(symbol);
+        ScannerRollbackFull(scanner);
         
-    	return "Failed to allocate memory for an invocation node";
+    	return "Failed to allocate memory for an argument list node";
     }
 
     (*node)->childCount = child_list.count;
@@ -548,16 +583,66 @@ char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
     return 0;
 }
 
+char* Invocation_tryParse(Scanner scanner, ASTNode** node, int level) {
+
+    //TEMP
+    //print_indent(level); printf("Trying to parse an invocation\n");
+
+    ScanResult sr = { 0 };
+    char* error;
+    ASTNode* symbol;
+
+    ScannerBegin(scanner);
+
+    error = Symbol_tryParse(scanner, &symbol, level + 1);
+
+    if(error != 0) {
+
+        ScannerRollbackFull(scanner);
+
+    	return error;
+    }
+
+    ScannerSkipWhitespace(scanner);
+
+    ASTNode* arguments;
+    error = ArgumentList_tryParse(scanner, &arguments, level + 1);
+
+    if(error != 0) {
+
+    	ASTNode_cleanUp(symbol);
+        ScannerRollbackFull(scanner);
+
+    	return error;
+    }
+
+    error = ASTNode_create(node, Invocation, 2, 0);
+
+    if(error != 0) {
+    
+    	ASTNode_cleanUp(symbol);
+    	ASTNode_cleanUp(arguments);
+        ScannerRollbackFull(scanner);
+        
+    	return "Failed to allocate memory for an invocation node";
+    }
+
+    (*node)->IN_SYMBOL = symbol;
+    (*node)->IN_ARGS = arguments;
+
+    return 0;
+}
+
 char* Expression_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse an expression\n");
+    //print_indent(level); printf("Trying to parse an expression\n");
 
     char* error;
     
     if(Lambda_tryParse(scanner, node, level + 1) == 0) return 0;
-    if((error = Operator_tryParse(scanner, node, level + 1)) == 0) return 0;
     if((error = Invocation_tryParse(scanner, node, level + 1)) == 0) return 0;
+    if((error = Operator_tryParse(scanner, node, level + 1)) == 0) return 0;
 
     return error;
 }
@@ -565,7 +650,7 @@ char* Expression_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* Declaration_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a declaration\n");
+    //print_indent(level); printf("Trying to parse a declaration\n");
     
     ScanResult sr = { 0 };
 
@@ -640,7 +725,7 @@ char* Declaration_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* ExpressionStatement_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse an expression statement\n");
+    //print_indent(level); printf("Trying to parse an expression statement\n");
 
     char* error;
 
@@ -658,7 +743,7 @@ char* ExpressionStatement_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* Statement_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a statement\n");
+    //print_indent(level); printf("Trying to parse a statement\n");
 
     ScannerSkipWhitespace(scanner);
 
@@ -673,7 +758,7 @@ char* Statement_tryParse(Scanner scanner, ASTNode** node, int level) {
 char* Module_tryParse(Scanner scanner, ASTNode** node, int level) {
 
     //TEMP
-    print_indent(level); printf("Trying to parse a module\n");
+    //print_indent(level); printf("Trying to parse a module\n");
 
     int statementCapacity = 0;
     char* inner_error = 0;

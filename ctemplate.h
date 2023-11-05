@@ -9,15 +9,21 @@ TemplateConfig CTemplateConfig = {
     "", //ParameterList
     "", //Operator
     "lambda_declaration", //Lambda
-    "" //Symbol
+    "", //Symbol
+    "", //Invocation
+    "", //ArgumentList
+    "", //StringLiteral
+    "", //NumberLiteral
     },
-    11,
+    15,
     {
         {
             "module",
             "{{er`{{c`pred`{{t`lambda_declaration`}}`}}`}}\n"
+            "#include <stdio.h>\n"
             "int main(int argc, char* argv[]) {\n"
             "{{tc`global_declarations`}}\n"
+            "{{tc`global_expressions`}}\n"
             "}\n", 0, 
             ASTNode_IsLambda
         }, 
@@ -25,6 +31,10 @@ TemplateConfig CTemplateConfig = {
             "global_declarations",
             "{{e`{{c`pred`Lambda{{ic1a0}}Type {{sc0a0}} = Lambda{{ic1a0}};`}}\n`}}", 0,
             ASTNode_IsDeclaration
+        }, 
+        {
+            "global_expressions",
+            "{{e`{{t`expression`}};`}}", 0, 0
         },
         {
             "lambda_declaration",
@@ -33,7 +43,17 @@ TemplateConfig CTemplateConfig = {
         },
         {
             "expression",
-            "{{tc`operator_expression`}}{{tc`symbol_expression`}}", 0, 0
+            "{{tc`operator_expression`}}{{tc`symbol_expression`}}{{tc`invocation_expression`}}{{tc`string_expression`}}{{tc`number_expression`}}", 0, 0
+        },
+        {
+            "string_expression",
+            "{{c`pred`\"{{sa0}}\"`}}", 0,
+            ASTNode_IsStringLiteral
+        },
+        {
+            "number_expression",
+            "{{c`pred`{{ia0}}`}}", 0,
+            ASTNode_IsNumberLiteral
         },
         {
             "symbol_expression",
@@ -68,6 +88,11 @@ TemplateConfig CTemplateConfig = {
             "div_operator",
             "{{c`pred`/`}}", 0,
             ASTOperatorNode_OperatorIsDiv
+        },
+        {
+            "invocation_expression",
+            "{{c`pred`{{tc0`symbol_expression`}}({{ec1`{{c`!first`, `}}{{t`expression`}}`}})`}}", 0,
+            ASTNode_IsInvocation
         }
     }
 };
